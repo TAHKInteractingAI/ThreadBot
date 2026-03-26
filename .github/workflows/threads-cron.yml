@@ -1,0 +1,45 @@
+name: Threads Auto Post Cronjob
+
+on:
+  schedule:
+    # 9h30 sáng giờ Việt Nam
+    - cron: '30 2 * * *'
+    # 21h30 tối giờ Việt Nam
+    - cron: '30 14 * * *'
+  workflow_dispatch: 
+
+jobs:
+  post-threads:
+    runs-on: windows-latest 
+
+    steps:
+      - name: Checkout mã nguồn
+        uses: actions/checkout@v3
+
+      - name: Cài đặt môi trường Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Cài đặt thư viện cần thiết
+        run: |
+          pip install playwright requests regex gspread oauth2client pillow
+          playwright install chromium
+
+      - name: Tái tạo file credentials.json từ Secret
+        shell: bash
+        env:
+          GCP_CREDS: ${{ secrets.GCP_CREDENTIALS }}
+        run: |
+          echo "$GCP_CREDS" > credentials.json
+
+      - name: Tải Profiles từ Google Drive
+        run: |
+          pip install gdown
+          gdown --id 1nCbfHNLf9oHQB5k3rQdxl31iYy2b-nY8 -O profiles.zip
+
+      - name: Giải nén lịch sử đăng nhập
+        run: python -m zipfile -e profiles.zip .
+
+      - name: Chạy Tool Auto Post
+        run: python thread_autopost_tool.py
