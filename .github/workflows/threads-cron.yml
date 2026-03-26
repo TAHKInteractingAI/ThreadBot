@@ -42,4 +42,6 @@ jobs:
         run: python -m zipfile -e profiles.zip .
 
       - name: Chạy Tool Auto Post
+        env:
+          PYTHONIOENCODING: 'utf-8'
         run: python thread_autopost_tool.py
