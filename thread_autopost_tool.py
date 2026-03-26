@@ -192,6 +192,7 @@ class ThreadsBot:
             headless=self.headless,
             channel="chrome",
             viewport={"width": 1280, "height": 900},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
             locale="vi-VN",
             timezone_id="Asia/Ho_Chi_Minh",
             args=[
@@ -314,6 +315,10 @@ class ThreadsBot:
 
     async def _open_composer(self):
         try:
+            await self.page.keyboard.press("Escape")
+            await self.page.wait_for_timeout(500)
+            await self.page.keyboard.press("Escape")
+            await self.page.wait_for_timeout(1000)
             # Tìm nút mở khung đăng bài
             try:
                 # Click bằng thẻ CSS tĩnh (Không phụ thuộc ngôn ngữ)
