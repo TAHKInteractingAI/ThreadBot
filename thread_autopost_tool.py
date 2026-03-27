@@ -221,7 +221,18 @@ class ThreadsBot:
 
     async def _is_logged_in(self) -> bool:
         try:
-            await self.page.wait_for_selector("a[href^='/@']", timeout=8000)
+            # Chờ 3 giây để giao diện tải đầy đủ
+            await self.page.wait_for_timeout(3000)
+            
+            # Kiểm tra xem có chữ "Đăng nhập hoặc đăng ký" hoặc nút "Đăng nhập" trên màn hình không
+            is_guest = await self.page.locator("text='Đăng nhập hoặc đăng ký', a[href*='/login']").count()
+            
+            if is_guest > 0:
+                # Nếu thấy bảng đăng nhập -> Chắc chắn đã bị văng acc
+                return False
+                
+            # Nếu không thấy bảng đăng nhập, tìm icon Trang cá nhân để chắc cú 100%
+            await self.page.wait_for_selector("a[href^='/@']", timeout=5000)
             return True
         except:
             return False
