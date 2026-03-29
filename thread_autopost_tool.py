@@ -133,7 +133,7 @@ def get_all_accounts():
             accounts[code] = {
                 "email": str(row.get("Email", "")).strip(),
                 "password": str(row.get("Password", "")).strip(),
-                # 👈 Lấy mã 2FA_Secret từ Sheet, xóa luôn khoảng trắng cho chuẩn form
+                # Lấy mã 2FA_Secret từ Sheet, xóa luôn khoảng trắng cho chuẩn form
                 "secret_2fa": str(row.get("2FA_Secret", "")).replace(" ", "").strip(),
             }
     return accounts
@@ -268,7 +268,7 @@ class ThreadsBot:
                 'button[type="submit"], button:has-text("Log in"), button:has-text("Đăng nhập")'
             )
 
-            # 👇 BỘ GIẢI MÃ 2FA TỰ ĐỘNG CHẠY VÀO ĐÂY 👇
+            # BỘ GIẢI MÃ 2FA TỰ ĐỘNG CHẠY VÀO ĐÂY
             try:
                 # Đứng đợi xem màn hình bắt nhập mã 6 số có xuất hiện không
                 two_fa_input = self.page.locator(
@@ -518,11 +518,11 @@ async def run():
                 except Exception as e:
                     raise Exception(f"❌ Tải ảnh thất bại: {e}")
 
-            # 1. ĐĂNG BÀI CHÍNH
+            # ĐĂNG BÀI CHÍNH
             post_url = await bot.post(text=job_content, image_path=image_path)
             print(f"🔗 Post URL (Bài chính): {post_url}")
 
-            # 2. ĐĂNG BÌNH LUẬN PHỤ
+            # ĐĂNG BÌNH LUẬN PHỤ
             if thread_content:
                 await bot.reply_to_post(post_url=post_url, text=thread_content)
 
@@ -544,7 +544,7 @@ async def run():
             await bot.close()
             print(f"🛑 Đã đóng trình duyệt của {acc_code}")
 
-        # 3. NGHỈ GIẢI LAO TRƯỚC KHI SANG BÀI TIẾP THEO (CHỐNG SPAM)
+        # NGHỈ GIẢI LAO TRƯỚC KHI SANG BÀI TIẾP THEO (CHỐNG SPAM)
         if i < len(rows) - 1:
             wait_time = random.randint(*DELAY_BETWEEN_POSTS)
             print(
