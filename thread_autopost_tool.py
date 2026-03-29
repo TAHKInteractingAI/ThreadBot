@@ -7,6 +7,7 @@ import asyncio
 import requests
 import regex as re
 import gspread
+import pyotp  # 👈 THƯ VIỆN MỚI ĐỂ SINH MÃ 2FA
 
 from datetime import datetime
 from PIL import Image
@@ -131,6 +132,8 @@ def get_all_accounts():
             accounts[code] = {
                 "email": str(row.get("Email", "")).strip(),
                 "password": str(row.get("Password", "")).strip(),
+                # 👈 Lấy mã 2FA_Secret từ Sheet, xóa luôn khoảng trắng cho chuẩn form
+                "secret_2fa": str(row.get("2FA_Secret", "")).replace(" ", "").strip(),
             }
     return accounts
 
@@ -151,9 +154,7 @@ def get_unposted_rows(limit=MAX_POSTS_PER_RUN):
 
 def mark_posted(row_index: int, post_url: str):
     sheet = connect_sheet(RECRUIT_TAB_NAME)
-
     now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_POSTED), "YES")
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_LINK_POST), post_url)
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_DATE), now_time)
@@ -172,13 +173,20 @@ def _col_index(tab_name: str, col_name: str) -> int:
 # THREADS BOT (PLAYWRIGHT)
 # ==========================================
 class ThreadsBot:
-    def __init__(self, account_code: str, email: str, password: str, headless=True):
+    def __init__(
+        self,
+        account_code: str,
+        email: str,
+        password: str,
+        secret_2fa: str = "",
+        headless=True,
+    ):
         self.headless = headless
         self.account_code = account_code
         self.email = email
         self.password = password
+        self.secret_2fa = secret_2fa  # Nhận mã khóa bí mật vào bot
 
-        # Thay vì profile_dir, ta dùng đường dẫn trỏ tới file cookie JSON
         self.cookie_file = os.path.join(
             BASE_DIR, "cookies", f"{self.account_code}.json"
         )
@@ -191,15 +199,12 @@ class ThreadsBot:
 
     async def start(self):
         self.pw = await async_playwright().__aenter__()
-
-        # Mở browser độc lập
         self.browser = await self.pw.chromium.launch(
             headless=self.headless,
             channel="chrome",
             args=["--disable-blink-features=AutomationControlled", "--lang=vi-VN"],
         )
 
-        # Cấu hình giả lập người dùng VN
         context_options = {
             "viewport": {"width": 1280, "height": 900},
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
@@ -207,7 +212,6 @@ class ThreadsBot:
             "timezone_id": "Asia/Ho_Chi_Minh",
         }
 
-        # 👈 CHÌA KHÓA Ở ĐÂY: Nếu file json tồn tại, bơm thẳng cookie vào context
         if os.path.exists(self.cookie_file):
             context_options["storage_state"] = self.cookie_file
             print(f"🍪 Đã tìm thấy Cookie cho {self.account_code}. Đang nạp...")
@@ -220,13 +224,11 @@ class ThreadsBot:
 
         if not is_logged_in:
             print(
-                f"⚠ Cookie hỏng hoặc chưa có cho {self.account_code}. Tiến hành auto-login..."
+                f"⚠ Cookie hỏng hoặc bị chặn IP cho {self.account_code}. Tiến hành auto-login..."
             )
             await self._login()
         else:
-            print(
-                f"✅ Tài khoản {self.account_code} đăng nhập thành công từ file Cookie JSON."
-            )
+            print(f"✅ Tài khoản {self.account_code} đăng nhập thành công bằng Cookie.")
 
     async def close(self):
         if self.context:
@@ -262,20 +264,53 @@ class ThreadsBot:
                 'button[type="submit"], button:has-text("Log in"), button:has-text("Đăng nhập")'
             )
 
+            # 👇 BỘ GIẢI MÃ 2FA TỰ ĐỘNG CHẠY VÀO ĐÂY 👇
+            try:
+                # Đứng đợi xem màn hình bắt nhập mã 6 số có xuất hiện không
+                two_fa_input = self.page.locator(
+                    'input[name="verificationCode"], input[aria-label*="Mã"], input[aria-label*="code"]'
+                ).first
+                await two_fa_input.wait_for(state="visible", timeout=8000)
+
+                print(
+                    f"🔒 Meta phát hiện IP lạ và yêu cầu mã 2FA cho {self.account_code}!"
+                )
+
+                if not self.secret_2fa:
+                    raise Exception(
+                        "Tài khoản bị bắt nhập mã nhưng bạn chưa điền cột 2FA_Secret trong Google Sheet!"
+                    )
+
+                # Biến "Khuôn" thành mã 6 số thực tế ngay lúc này
+                totp = pyotp.TOTP(self.secret_2fa)
+                code_6_digits = totp.now()
+                print(
+                    f"🔑 Bot đã tự bẻ khóa và lấy mã 6 số thành công: {code_6_digits}"
+                )
+
+                # Tự gõ mã vào và Enter
+                await two_fa_input.fill(code_6_digits)
+                await self.page.keyboard.press("Enter")
+                await self.page.wait_for_timeout(4000)  # Nghỉ xíu chờ nó load
+
+            except Exception as e_2fa:
+                # Nếu không thấy bảng nhập mã, Bot ngầm hiểu là đã qua cửa, cứ đi tiếp thôi
+                pass
+
+            # Xác nhận xem đã lọt vào được tường cá nhân chưa
             await self.page.wait_for_selector(
                 "a[href^='/@']",
                 timeout=15000,
             )
-            print(f"✅ Đăng nhập tự động thành công cho {self.account_code}!")
+            print(f"✅ Vượt rào thành công! Đăng nhập xong cho {self.account_code}!")
 
-            # 👈 LƯU LẠI COOKIE MỚI SAU KHI LOGIN
             await self.context.storage_state(path=self.cookie_file)
-            print(f"💾 Đã cập nhật file Cookie mới vào: {self.cookie_file}")
+            print(f"💾 Đã lưu lại file Cookie json siêu nhẹ để xài cho lần sau.")
 
         except Exception as e:
             await self.page.screenshot(path=f"error_login_{self.account_code}.png")
             raise Exception(
-                f"❌ Login tự động thất bại cho {self.account_code}. Vui lòng kiểm tra lại pass hoặc Threads chặn bot. Lỗi: {e}"
+                f"❌ Login tự động thất bại cho {self.account_code}. Lỗi: {e}"
             )
 
     async def post(self, text: str, image_path: str | None = None):
@@ -306,7 +341,6 @@ class ThreadsBot:
 
         print("💬 Đang tiến hành thả comment phụ (Thread Content)...")
         await self.page.goto(post_url, wait_until="networkidle")
-
         await self.page.wait_for_timeout(random.randint(4000, 6000))
 
         try:
@@ -443,7 +477,6 @@ async def run():
         data = item["data"]
 
         acc_code = str(data.get(COL_ACCOUNTS_CODE, "")).strip()
-
         job_content = data.get(COL_JOB_CONTENT, "").strip()
         thread_content = data.get(COL_THREAD_CONTENT, "").strip()
         image_url = data.get(COL_IMAGE, "").strip()
@@ -461,11 +494,13 @@ async def run():
             continue
 
         acc_info = accounts_dict[acc_code]
-        # Bật Headless = False nếu chạy trên máy để xem, đẩy lên GitHub nhớ để True
+
+        # Gọi Bot và truyền thêm tham số secret_2fa vào
         bot = ThreadsBot(
             account_code=acc_code,
             email=acc_info["email"],
             password=acc_info["password"],
+            secret_2fa=acc_info["secret_2fa"],  # 👈 Đẩy mã 2FA vào Bot
             headless=True,
         )
 
