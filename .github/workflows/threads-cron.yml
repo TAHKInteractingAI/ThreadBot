@@ -22,9 +22,8 @@ jobs:
           python-version: '3.10'
 
       - name: Cài đặt thư viện cần thiết
-        # Đã bổ sung thêm thư viện pyotp để tạo mã 2FA
         run: |
-          pip install playwright requests regex gspread oauth2client pillow pyotp
+          pip install playwright requests regex gspread oauth2client pillow pyotp pytz
           playwright install chromium
 
       - name: Tái tạo file credentials.json từ Secret
