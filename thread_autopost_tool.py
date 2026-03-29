@@ -178,28 +178,41 @@ class ThreadsBot:
         self.email = email
         self.password = password
 
-        self.profile_dir = os.path.join(BASE_DIR, "profiles", self.account_code)
-        os.makedirs(self.profile_dir, exist_ok=True)
+        # Thay vì profile_dir, ta dùng đường dẫn trỏ tới file cookie JSON
+        self.cookie_file = os.path.join(
+            BASE_DIR, "cookies", f"{self.account_code}.json"
+        )
+        os.makedirs(os.path.dirname(self.cookie_file), exist_ok=True)
 
         self.pw = None
+        self.browser = None
         self.context = None
         self.page = None
 
     async def start(self):
         self.pw = await async_playwright().__aenter__()
-        self.context = await self.pw.chromium.launch_persistent_context(
-            self.profile_dir,
+
+        # Mở browser độc lập
+        self.browser = await self.pw.chromium.launch(
             headless=self.headless,
             channel="chrome",
-            viewport={"width": 1280, "height": 900},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-            locale="vi-VN",
-            timezone_id="Asia/Ho_Chi_Minh",
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--lang=vi-VN"
-            ],
+            args=["--disable-blink-features=AutomationControlled", "--lang=vi-VN"],
         )
+
+        # Cấu hình giả lập người dùng VN
+        context_options = {
+            "viewport": {"width": 1280, "height": 900},
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            "locale": "vi-VN",
+            "timezone_id": "Asia/Ho_Chi_Minh",
+        }
+
+        # 👈 CHÌA KHÓA Ở ĐÂY: Nếu file json tồn tại, bơm thẳng cookie vào context
+        if os.path.exists(self.cookie_file):
+            context_options["storage_state"] = self.cookie_file
+            print(f"🍪 Đã tìm thấy Cookie cho {self.account_code}. Đang nạp...")
+
+        self.context = await self.browser.new_context(**context_options)
         self.page = await self.context.new_page()
 
         await self.page.goto(THREADS_URL, wait_until="networkidle")
@@ -207,31 +220,32 @@ class ThreadsBot:
 
         if not is_logged_in:
             print(
-                f"⚠ Tài khoản {self.account_code} chưa đăng nhập. Tiến hành auto-login..."
+                f"⚠ Cookie hỏng hoặc chưa có cho {self.account_code}. Tiến hành auto-login..."
             )
             await self._login()
         else:
-            print(f"✅ Tài khoản {self.account_code} đã lưu phiên đăng nhập trước đó.")
+            print(
+                f"✅ Tài khoản {self.account_code} đăng nhập thành công từ file Cookie JSON."
+            )
 
     async def close(self):
         if self.context:
             await self.context.close()
+        if self.browser:
+            await self.browser.close()
         if self.pw:
             await self.pw.stop()
 
     async def _is_logged_in(self) -> bool:
         try:
-            # Chờ 3 giây để giao diện tải đầy đủ
             await self.page.wait_for_timeout(3000)
-            
-            # Kiểm tra xem có chữ "Đăng nhập hoặc đăng ký" hoặc nút "Đăng nhập" trên màn hình không
-            is_guest = await self.page.locator("text='Đăng nhập hoặc đăng ký', a[href*='/login']").count()
-            
+            is_guest = await self.page.locator(
+                "text='Đăng nhập hoặc đăng ký', a[href*='/login']"
+            ).count()
+
             if is_guest > 0:
-                # Nếu thấy bảng đăng nhập -> Chắc chắn đã bị văng acc
                 return False
-                
-            # Nếu không thấy bảng đăng nhập, tìm icon Trang cá nhân để chắc cú 100%
+
             await self.page.wait_for_selector("a[href^='/@']", timeout=5000)
             return True
         except:
@@ -253,6 +267,11 @@ class ThreadsBot:
                 timeout=15000,
             )
             print(f"✅ Đăng nhập tự động thành công cho {self.account_code}!")
+
+            # 👈 LƯU LẠI COOKIE MỚI SAU KHI LOGIN
+            await self.context.storage_state(path=self.cookie_file)
+            print(f"💾 Đã cập nhật file Cookie mới vào: {self.cookie_file}")
+
         except Exception as e:
             await self.page.screenshot(path=f"error_login_{self.account_code}.png")
             raise Exception(
@@ -288,11 +307,9 @@ class ThreadsBot:
         print("💬 Đang tiến hành thả comment phụ (Thread Content)...")
         await self.page.goto(post_url, wait_until="networkidle")
 
-        # Tăng thời gian chờ load trang bài viết một chút cho giống người
         await self.page.wait_for_timeout(random.randint(4000, 6000))
 
         try:
-            # Click vào icon bong bóng chat (Trả lời / Reply)
             reply_btn = self.page.locator(
                 "svg[aria-label='Trả lời'], svg[aria-label='Reply']"
             ).first
@@ -301,7 +318,6 @@ class ThreadsBot:
 
             await self.page.wait_for_timeout(2000)
 
-            # Bắt vào khung gõ chữ và nhập Thread Content
             editor = self.page.locator("div[contenteditable='true']").first
             await editor.wait_for(state="visible", timeout=10000)
             await editor.click()
@@ -309,7 +325,6 @@ class ThreadsBot:
             await self._type_text(text)
             await self.page.wait_for_timeout(1000)
 
-            # Đăng comment
             await self._submit_post()
             print("✅ Đã đăng comment phụ thành công!")
             await self.page.wait_for_timeout(4000)
@@ -330,10 +345,8 @@ class ThreadsBot:
             await self.page.wait_for_timeout(500)
             await self.page.keyboard.press("Escape")
             await self.page.wait_for_timeout(1000)
-            # Tìm nút mở khung đăng bài
+
             try:
-                # Click bằng thẻ CSS tĩnh (Không phụ thuộc ngôn ngữ)
-                # Bắt thẳng vào nút "New Thread" ở thanh menu
                 nav_btn = self.page.locator("a[href='/compose']").first
                 await nav_btn.wait_for(state="visible", timeout=3000)
                 await nav_btn.click()
@@ -355,7 +368,6 @@ class ThreadsBot:
 
             time.sleep(2)
 
-            # Bắt vào khung gõ chữ
             editor = self.page.locator("div[contenteditable='true']").first
             await editor.wait_for(state="visible", timeout=15000)
             await editor.click()
@@ -369,7 +381,6 @@ class ThreadsBot:
             raise Exception(f"Không thể mở khung đăng bài: {e}")
 
     async def _type_text(self, text: str):
-        # Tốc độ gõ phím ngẫu nhiên để chống bot
         delay_typing = random.randint(15, 30)
         await self.page.keyboard.type(text, delay=delay_typing)
         time.sleep(random.uniform(*POST_DELAY_RANGE))
@@ -450,7 +461,7 @@ async def run():
             continue
 
         acc_info = accounts_dict[acc_code]
-        # Bật Headless = False để bạn nhìn thấy tiến trình, nếu muốn chạy ngầm hoàn toàn hãy sửa thành True
+        # Bật Headless = False nếu chạy trên máy để xem, đẩy lên GitHub nhớ để True
         bot = ThreadsBot(
             account_code=acc_code,
             email=acc_info["email"],
