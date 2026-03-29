@@ -7,7 +7,8 @@ import asyncio
 import requests
 import regex as re
 import gspread
-import pyotp  # 👈 THƯ VIỆN MỚI ĐỂ SINH MÃ 2FA
+import pyotp
+import pytz
 
 from datetime import datetime
 from PIL import Image
@@ -154,7 +155,10 @@ def get_unposted_rows(limit=MAX_POSTS_PER_RUN):
 
 def mark_posted(row_index: int, post_url: str):
     sheet = connect_sheet(RECRUIT_TAB_NAME)
-    now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    tz_vn = pytz.timezone("Asia/Ho_Chi_Minh")
+    now_time = datetime.now(tz_vn).strftime("%Y-%m-%d %H:%M:%S")
+
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_POSTED), "YES")
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_LINK_POST), post_url)
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_DATE), now_time)
