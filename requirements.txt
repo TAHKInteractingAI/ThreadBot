@@ -1,0 +1,8 @@
+playwright
+requests
+regex
+gspread
+oauth2client
+Pillow
+pyotp
+pytz
