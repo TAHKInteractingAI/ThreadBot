@@ -38,7 +38,7 @@ jobs:
           PYTHONIOENCODING: 'utf-8'
         run: python thread_autopost_tool.py
         
-      - name: Lưu ảnh chụp màn hình khi bị lỗi (Để bắt bệnh)
+      - name: Lưu ảnh chụp màn hình khi bị lỗi
         if: always() 
         uses: actions/upload-artifact@v4
         with:
