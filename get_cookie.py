@@ -19,7 +19,7 @@ def extract_cookies():
         print("👉 Vui lòng chạy file login.py để đăng nhập tay trước nhé!")
         return
 
-    # Tạo thư mục chứa cookies (để tí nữa chỉ tải thư mục này lên GitHub)
+    # Tạo thư mục chứa cookies
     cookie_dir = os.path.join(BASE_DIR, "cookies")
     os.makedirs(cookie_dir, exist_ok=True)
 
