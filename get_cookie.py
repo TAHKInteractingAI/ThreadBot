@@ -36,14 +36,14 @@ def extract_cookies():
             args=["--disable-blink-features=AutomationControlled"],
         )
 
-        # 👈 LỆNH "THẦN THÁNH": Rút trích toàn bộ trạng thái đăng nhập ra file JSON
+        # Trích toàn bộ trạng thái đăng nhập ra file JSON
         ctx.storage_state(path=cookie_file)
 
         ctx.close()
 
         print(f"✅ THÀNH CÔNG! Đã xuất file Cookie siêu nhẹ tại: {cookie_file}")
 
-        # In dung lượng file ra cho bạn xem độ ảo diệu (Chắc chắn chỉ vài KB)
+        # In dung lượng file
         size_kb = os.path.getsize(cookie_file) / 1024
         print(f"👉 Kích thước file hiện tại: {size_kb:.2f} KB")
 
