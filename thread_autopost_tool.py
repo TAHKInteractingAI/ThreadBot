@@ -200,7 +200,6 @@ class ThreadsBot:
         if self.browser: await self.browser.close()
         if self.pw: await self.pw.stop()
 
-    # 👇 ĐÃ SỬA: NHẬN DIỆN CHẾ ĐỘ KHÁCH CHUẨN XÁC 100% 👇
     async def _is_logged_in(self) -> bool:
         try:
             await self.page.wait_for_timeout(4000)
@@ -222,7 +221,7 @@ class ThreadsBot:
         try:
             await self.page.wait_for_timeout(3000)
 
-            # 👇 ĐÃ SỬA: TỰ ĐỘNG BẤM VÀO CHỮ ĐỂ GỌI FORM ĐĂNG NHẬP RA 👇
+            # Bấm vào chữ để gọi Form đăng nhập ra
             try:
                 switch_btn = self.page.locator("text='Đăng nhập bằng tên người dùng', text='Log in with phone', text='Log in with email'").first
                 if await switch_btn.is_visible(timeout=5000):
@@ -230,17 +229,25 @@ class ThreadsBot:
                     await switch_btn.click()
                     await self.page.wait_for_timeout(2000)
             except Exception:
-                pass # Nếu Form đã hiện sẵn thì nó bỏ qua bước này
+                pass 
 
-            await self.page.wait_for_selector('input[type="text"]', timeout=10000)
-            await self.page.fill('input[type="text"]', self.email)
-            await self.page.wait_for_timeout(500)
-            await self.page.fill('input[type="password"]', self.password)
-            await self.page.wait_for_timeout(500)
-            await self.page.click('button[type="submit"], button:has-text("Log in"), button:has-text("Đăng nhập")')
+            # Mở rộng selector nhận diện Form
+            await self.page.wait_for_selector('input[type="text"], input[name="username"]', timeout=10000)
+            await self.page.fill('input[type="text"], input[name="username"]', self.email)
+            await self.page.wait_for_timeout(1000)
+            
+            await self.page.fill('input[type="password"], input[name="password"]', self.password)
+            await self.page.wait_for_timeout(1000)
+            
+            # 👇 DÙNG PHÍM ENTER THAY VÌ CLICK NÚT ĐỂ CHUẨN XÁC 100% 👇
+            print("🔄 Đang nhấn phím Enter để Đăng nhập...")
+            await self.page.keyboard.press("Enter")
+            await self.page.wait_for_timeout(6000) # Đợi trang load chuyển sang màn 2FA
 
+            # XỬ LÝ NHẬP MÃ 6 SỐ 2FA
             try:
-                two_fa_input = self.page.locator('input[name="verificationCode"], input[aria-label*="Mã"], input[aria-label*="code"]').first
+                # Mở rộng selector để bắt chắc chắn ô nhập 2FA
+                two_fa_input = self.page.locator('input[name="verificationCode"], input[aria-label*="Mã"], input[aria-label*="code"], input[type="tel"]').first
                 await two_fa_input.wait_for(state="visible", timeout=8000)
                 print(f"🔒 Meta yêu cầu mã 2FA cho {self.account_code}!")
 
@@ -252,14 +259,16 @@ class ThreadsBot:
                 print(f"🔑 Tự động nhập mã: {code_6_digits}")
 
                 await two_fa_input.fill(code_6_digits)
+                await self.page.wait_for_timeout(1000)
+                
+                # Tiếp tục dùng phím Enter để xác nhận mã 2FA
                 await self.page.keyboard.press("Enter")
-                await self.page.wait_for_timeout(4000)
+                await self.page.wait_for_timeout(5000)
             except Exception:
                 pass
 
+            # Xác minh lại xem đã lọt qua được cửa chưa
             await self.page.wait_for_timeout(5000)
-            
-            # Kiểm tra xem có bị kẹt lại ở Form đăng nhập do sai pass/email không
             guest_check = self.page.locator("text='Đăng nhập bằng tên người dùng', button:has-text('Đăng nhập'), button:has-text('Log in')").first
             if await guest_check.is_visible():
                 raise Exception("Kẹt ở màn hình đăng nhập (Sai Pass, sai Email hoặc Meta bắt xác minh Captcha).")
