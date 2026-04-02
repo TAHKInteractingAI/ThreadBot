@@ -41,15 +41,11 @@ COL_LINK_POST = "Link post"
 COL_DATE = "Date"
 COL_ACCOUNTS_CODE = "AccountsCode"
 
-# MỞ GIỚI HẠN ĐĂNG BÀI ĐỂ ĐĂNG HẾT
 MAX_POSTS_PER_RUN = 999
-
 THREADS_URL = "https://www.threads.net"
 
 POST_DELAY_RANGE = (3, 6)
 AFTER_POST_DELAY = (5, 8)
-
-# CẤU HÌNH THỜI GIAN NGHỈ CHỐNG SPAM (Giây)
 DELAY_BETWEEN_POSTS = (60, 180)
 
 
@@ -100,12 +96,10 @@ def download_image(url, folder="tmp_images"):
     response = requests.get(url, allow_redirects=True, timeout=20)
     if response.status_code != 200:
         raise Exception(f"Image download failed: {response.status_code}")
-
     filename = get_filename_from_response(response).replace("/", "_")
     full_path = os.path.join(folder_path, filename)
-    content = response.content
     with open(full_path, "wb") as f:
-        f.write(content)
+        f.write(response.content)
     make_square(full_path)
     return full_path
 
@@ -133,7 +127,6 @@ def get_all_accounts():
             accounts[code] = {
                 "email": str(row.get("Email", "")).strip(),
                 "password": str(row.get("Password", "")).strip(),
-                # Lấy mã 2FA_Secret từ Sheet, xóa luôn khoảng trắng cho chuẩn form
                 "secret_2fa": str(row.get("2FA_Secret", "")).replace(" ", "").strip(),
             }
     return accounts
@@ -155,10 +148,8 @@ def get_unposted_rows(limit=MAX_POSTS_PER_RUN):
 
 def mark_posted(row_index: int, post_url: str):
     sheet = connect_sheet(RECRUIT_TAB_NAME)
-
     tz_vn = pytz.timezone("Asia/Ho_Chi_Minh")
     now_time = datetime.now(tz_vn).strftime("%Y-%m-%d %H:%M:%S")
-
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_POSTED), "YES")
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_LINK_POST), post_url)
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_DATE), now_time)
@@ -189,11 +180,11 @@ class ThreadsBot:
         self.account_code = account_code
         self.email = email
         self.password = password
-        self.secret_2fa = secret_2fa  # Nhận mã khóa bí mật vào bot
+        self.secret_2fa = secret_2fa
 
-        self.cookie_file = os.path.join(
-            BASE_DIR, "cookies", f"{self.account_code}.json"
-        )
+        # Lấy Email làm tên file Cookie để độc lập với AccountsCode
+        safe_email = re.sub(r"[^a-zA-Z0-9]", "_", self.email)
+        self.cookie_file = os.path.join(BASE_DIR, "cookies", f"{safe_email}.json")
         os.makedirs(os.path.dirname(self.cookie_file), exist_ok=True)
 
         self.pw = None
@@ -218,7 +209,7 @@ class ThreadsBot:
 
         if os.path.exists(self.cookie_file):
             context_options["storage_state"] = self.cookie_file
-            print(f"🍪 Đã tìm thấy Cookie cho {self.account_code}. Đang nạp...")
+            print(f"🍪 Đã tìm thấy Cookie cho {self.email}. Đang nạp...")
 
         self.context = await self.browser.new_context(**context_options)
         self.page = await self.context.new_page()
@@ -228,7 +219,7 @@ class ThreadsBot:
 
         if not is_logged_in:
             print(
-                f"⚠ Cookie hỏng hoặc bị chặn IP cho {self.account_code}. Tiến hành auto-login..."
+                f"⚠ Cookie hỏng/trống cho {self.account_code}. Tiến hành auto-login..."
             )
             await self._login()
         else:
@@ -248,10 +239,8 @@ class ThreadsBot:
             is_guest = await self.page.locator(
                 "text='Đăng nhập hoặc đăng ký', a[href*='/login']"
             ).count()
-
             if is_guest > 0:
                 return False
-
             await self.page.wait_for_selector("a[href^='/@']", timeout=5000)
             return True
         except:
@@ -263,64 +252,89 @@ class ThreadsBot:
             await self.page.wait_for_selector('input[type="text"]', timeout=10000)
             await self.page.fill('input[type="text"]', self.email)
             await self.page.fill('input[type="password"]', self.password)
-
             await self.page.click(
                 'button[type="submit"], button:has-text("Log in"), button:has-text("Đăng nhập")'
             )
 
-            # BỘ GIẢI MÃ 2FA TỰ ĐỘNG CHẠY VÀO ĐÂY
             try:
-                # Đứng đợi xem màn hình bắt nhập mã 6 số có xuất hiện không
                 two_fa_input = self.page.locator(
                     'input[name="verificationCode"], input[aria-label*="Mã"], input[aria-label*="code"]'
                 ).first
                 await two_fa_input.wait_for(state="visible", timeout=8000)
-
-                print(
-                    f"🔒 Meta phát hiện IP lạ và yêu cầu mã 2FA cho {self.account_code}!"
-                )
+                print(f"🔒 Meta yêu cầu mã 2FA cho {self.account_code}!")
 
                 if not self.secret_2fa:
                     raise Exception(
-                        "Tài khoản bị bắt nhập mã nhưng bạn chưa điền cột 2FA_Secret trong Google Sheet!"
+                        "Bị đòi mã 2FA nhưng chưa khai báo 2FA_Secret trong Google Sheet!"
                     )
 
-                # Biến "Khuôn" thành mã 6 số thực tế ngay lúc này
                 totp = pyotp.TOTP(self.secret_2fa)
                 code_6_digits = totp.now()
-                print(
-                    f"🔑 Bot đã tự bẻ khóa và lấy mã 6 số thành công: {code_6_digits}"
-                )
+                print(f"🔑 Tự động nhập mã: {code_6_digits}")
 
-                # Tự gõ mã vào và Enter
                 await two_fa_input.fill(code_6_digits)
                 await self.page.keyboard.press("Enter")
-                await self.page.wait_for_timeout(4000)  # Nghỉ xíu chờ nó load
-
-            except Exception as e_2fa:
-                # Nếu không thấy bảng nhập mã, Bot ngầm hiểu là đã qua cửa, cứ đi tiếp thôi
+                await self.page.wait_for_timeout(4000)
+            except Exception:
                 pass
 
-            # Xác nhận xem đã lọt vào được tường cá nhân chưa
-            await self.page.wait_for_selector(
-                "a[href^='/@']",
-                timeout=15000,
-            )
-            print(f"✅ Vượt rào thành công! Đăng nhập xong cho {self.account_code}!")
+            await self.page.wait_for_selector("a[href^='/@']", timeout=15000)
+            print(f"✅ Đăng nhập xong cho {self.account_code}!")
 
             await self.context.storage_state(path=self.cookie_file)
-            print(f"💾 Đã lưu lại file Cookie json siêu nhẹ để xài cho lần sau.")
+            print(f"💾 Đã lưu Cookie mới vào: {self.cookie_file}")
 
         except Exception as e:
             await self.page.screenshot(path=f"error_login_{self.account_code}.png")
-            raise Exception(
-                f"❌ Login tự động thất bại cho {self.account_code}. Lỗi: {e}"
-            )
+            raise Exception(f"❌ Login tự động thất bại. Lỗi: {e}")
+
+    # Lấy URL của bài cũ nhất trước khi đăng bài mới
+    async def _get_latest_post_url(self) -> str:
+        username = await self.get_profile_name()
+        if not username:
+            return ""
+        await self.page.goto(f"{THREADS_URL}/{username}", wait_until="networkidle")
+        await self.page.wait_for_timeout(3000)
+        link_locator = self.page.locator("a[href*='/post/']").first
+        if await link_locator.count() > 0:
+            href = await link_locator.get_attribute("href")
+            return f"{THREADS_URL}{href}" if href.startswith("/") else href
+        return ""
+
+    # 👇 GIẢI PHÁP 2: Đợi cho đến khi URL bài cũ bị thay thế bởi URL bài mới
+    async def _wait_for_new_post(self, old_url: str) -> str:
+        username = await self.get_profile_name()
+        if not username:
+            return ""
+
+        for attempt in range(6):  # Cố gắng F5 tối đa 6 lần
+            print(f"   ⏳ F5 tải lại trang cá nhân (Lần {attempt + 1}/6)...")
+            await self.page.goto(f"{THREADS_URL}/{username}", wait_until="networkidle")
+            await self.page.wait_for_timeout(4000)
+
+            link_locator = self.page.locator("a[href*='/post/']").first
+            if await link_locator.count() > 0:
+                current_url = await link_locator.get_attribute("href")
+                full_url = (
+                    f"{THREADS_URL}{current_url}"
+                    if current_url.startswith("/")
+                    else current_url
+                )
+
+                # Nếu link bài trên cùng khác với link bài cũ -> Chắc chắn là bài mới
+                if full_url != old_url:
+                    return full_url
+
+            await self.page.wait_for_timeout(3000)  # Đợi xíu rồi vòng lại F5 tiếp
+        return ""
 
     async def post(self, text: str, image_path: str | None = None):
         text = normalize_threads_content(text)
         if not text.strip():
             raise ValueError("❌ Nội dung bài post trống")
+
+        print("🔍 Đang ghi nhận link bài cũ trên tường để đối chiếu...")
+        old_post_url = await self._get_latest_post_url()
 
         await self._open_composer()
         await self._type_text(text)
@@ -329,13 +343,15 @@ class ThreadsBot:
         if image_path:
             await self._upload_image(image_path)
 
-        print("🚀 Sending post...")
+        print("🚀 Đang bấm nút đăng bài...")
         await self._submit_post()
 
-        print("🔍 Confirming post on profile...")
-        post_url = await self._confirm_posted()
+        print("🔍 Đang chờ Threads load xong bài viết mới...")
+        post_url = await self._wait_for_new_post(old_post_url)
         if not post_url:
-            raise Exception("❌ Post KHÔNG xuất hiện trên Threads profile")
+            raise Exception(
+                "❌ Post KHÔNG xuất hiện trên Threads profile sau thời gian đợi"
+            )
         return post_url
 
     async def reply_to_post(self, post_url: str, text: str):
@@ -353,7 +369,6 @@ class ThreadsBot:
             ).first
             await reply_btn.wait_for(state="visible", timeout=10000)
             await reply_btn.click()
-
             await self.page.wait_for_timeout(2000)
 
             editor = self.page.locator("div[contenteditable='true']").first
@@ -405,11 +420,9 @@ class ThreadsBot:
                         await plus_btn.click(timeout=5000)
 
             time.sleep(2)
-
             editor = self.page.locator("div[contenteditable='true']").first
             await editor.wait_for(state="visible", timeout=15000)
             await editor.click()
-
             time.sleep(random.uniform(*POST_DELAY_RANGE))
 
         except Exception as e:
@@ -422,26 +435,6 @@ class ThreadsBot:
         delay_typing = random.randint(15, 30)
         await self.page.keyboard.type(text, delay=delay_typing)
         time.sleep(random.uniform(*POST_DELAY_RANGE))
-
-    async def _confirm_posted(self) -> str:
-        username = await self.get_profile_name()
-        if not username:
-            return ""
-
-        for attempt in range(3):
-            print(f"   ⏳ Kiểm tra bài đăng trên tường (Lần {attempt + 1}/3)...")
-            await self.page.goto(f"{THREADS_URL}/{username}", wait_until="networkidle")
-            await self.page.wait_for_timeout(5000)
-
-            link_locator = self.page.locator("a[href*='/post/']").first
-
-            if await link_locator.count() > 0:
-                href = await link_locator.get_attribute("href")
-                return f"{THREADS_URL}{href}" if href.startswith("/") else href
-
-            await self.page.wait_for_timeout(2000)
-
-        return ""
 
     async def _upload_image(self, image_path: str):
         file_input = self.page.locator("input[type='file']").first
@@ -462,7 +455,6 @@ class ThreadsBot:
 # ==========================================
 async def run():
     print("🚀 START THREADS AUTO POST")
-
     try:
         accounts_dict = get_all_accounts()
         print(f"🔑 Đã load {len(accounts_dict)} tài khoản từ hệ thống.")
@@ -492,20 +484,17 @@ async def run():
         if not acc_code or acc_code not in accounts_dict:
             print(f"⚠ Mã account '{acc_code}' không hợp lệ hoặc trống → SKIP")
             continue
-
         if not job_content:
             print("⚠ Job Content (Bài chính) trống → SKIP")
             continue
 
         acc_info = accounts_dict[acc_code]
-
-        # Gọi Bot và truyền thêm tham số secret_2fa vào
         bot = ThreadsBot(
             account_code=acc_code,
             email=acc_info["email"],
             password=acc_info["password"],
-            secret_2fa=acc_info["secret_2fa"],  # 👈 Đẩy mã 2FA vào Bot
-            headless=True,
+            secret_2fa=acc_info["secret_2fa"],
+            headless=True,  # 👈 Chạy trên Github nhớ để True
         )
 
         image_path = None
@@ -526,10 +515,8 @@ async def run():
             if thread_content:
                 await bot.reply_to_post(post_url=post_url, text=thread_content)
 
-            # Cập nhật thành công lên Sheet
             mark_posted(row_index=row_index, post_url=post_url)
 
-            # Xoá ảnh rác
             if image_path and os.path.exists(image_path):
                 os.remove(image_path)
 
@@ -544,12 +531,9 @@ async def run():
             await bot.close()
             print(f"🛑 Đã đóng trình duyệt của {acc_code}")
 
-        # NGHỈ GIẢI LAO TRƯỚC KHI SANG BÀI TIẾP THEO (CHỐNG SPAM)
         if i < len(rows) - 1:
             wait_time = random.randint(*DELAY_BETWEEN_POSTS)
-            print(
-                f"⏳ Đang nghỉ ngẫu nhiên {wait_time} giây để Threads không phát hiện Spam..."
-            )
+            print(f"⏳ Đang nghỉ ngẫu nhiên {wait_time} giây để chống Spam...")
             time.sleep(wait_time)
 
     print("🎯 HOÀN TẤT QUÉT & ĐĂNG TẤT CẢ CÁC BÀI!")
