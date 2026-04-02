@@ -53,8 +53,7 @@ DELAY_BETWEEN_POSTS = (60, 180)
 # ULTILS
 # =========================
 def normalize_threads_content(text: str) -> str:
-    if not text:
-        return ""
+    if not text: return ""
     t = text.strip()
     t = re.sub(r"\s{2,}", " ", t)
     t = re.sub(r"\s*(\p{Extended_Pictographic})", r"\n\1", t)
@@ -62,23 +61,17 @@ def normalize_threads_content(text: str) -> str:
     t = re.sub(r"\n{2,}", "\n", t)
     return t.strip()
 
-
 def convert_google_drive(url: str) -> str:
     match = re.search(r"/d/([^/]+)/", url)
-    if match:
-        return f"https://drive.google.com/uc?export=download&id={match.group(1)}"
+    if match: return f"https://drive.google.com/uc?export=download&id={match.group(1)}"
     match = re.search(r"id=([^&]+)", url)
-    if match:
-        return f"https://drive.google.com/uc?export=download&id={match.group(1)}"
+    if match: return f"https://drive.google.com/uc?export=download&id={match.group(1)}"
     return url
-
 
 def get_filename_from_response(response, default="image.jpg"):
     cd = response.headers.get("Content-Disposition", "")
-    if "filename=" in cd:
-        return cd.split("filename=")[-1].strip('"')
+    if "filename=" in cd: return cd.split("filename=")[-1].strip('"')
     return default
-
 
 def make_square(image_path, min_size=1080, fill_color=(0, 0, 0)):
     img = Image.open(image_path)
@@ -87,7 +80,6 @@ def make_square(image_path, min_size=1080, fill_color=(0, 0, 0)):
     new_img = Image.new("RGB", (size, size), fill_color)
     new_img.paste(img, ((size - w) // 2, (size - h) // 2))
     new_img.save(image_path)
-
 
 def download_image(url, folder="tmp_images"):
     folder_path = os.path.join(BASE_DIR, folder)
@@ -98,24 +90,18 @@ def download_image(url, folder="tmp_images"):
         raise Exception(f"Image download failed: {response.status_code}")
     filename = get_filename_from_response(response).replace("/", "_")
     full_path = os.path.join(folder_path, filename)
-    with open(full_path, "wb") as f:
-        f.write(response.content)
+    with open(full_path, "wb") as f: f.write(response.content)
     make_square(full_path)
     return full_path
-
 
 # =========================
 # GOOGLE SHEET LOGIC
 # =========================
 def connect_sheet(tab_name):
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive",
-    ]
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIAL_FILE, scope)
     client = gspread.authorize(creds)
     return client.open_by_url(RECRUIT_SHEET_URL).worksheet(tab_name)
-
 
 def get_all_accounts():
     sheet = connect_sheet(ACCOUNT_TAB_NAME)
@@ -131,20 +117,16 @@ def get_all_accounts():
             }
     return accounts
 
-
 def get_unposted_rows(limit=MAX_POSTS_PER_RUN):
     sheet = connect_sheet(RECRUIT_TAB_NAME)
     rows = sheet.get_all_records()
     results = []
     for idx, row in enumerate(rows, start=2):
         posted = str(row.get(COL_POSTED, "")).strip().upper()
-        if posted == "YES":
-            continue
+        if posted == "YES": continue
         results.append({"row_index": idx, "data": row})
-        if len(results) >= limit:
-            break
+        if len(results) >= limit: break
     return results
-
 
 def mark_posted(row_index: int, post_url: str):
     sheet = connect_sheet(RECRUIT_TAB_NAME)
@@ -154,13 +136,11 @@ def mark_posted(row_index: int, post_url: str):
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_LINK_POST), post_url)
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_DATE), now_time)
 
-
 def _col_index(tab_name: str, col_name: str) -> int:
     sheet = connect_sheet(tab_name)
     headers = sheet.row_values(1)
     for i, h in enumerate(headers, start=1):
-        if h.strip() == col_name:
-            return i
+        if h.strip() == col_name: return i
     raise Exception(f"❌ Không tìm thấy cột: {col_name} trong tab {tab_name}")
 
 
@@ -168,21 +148,13 @@ def _col_index(tab_name: str, col_name: str) -> int:
 # THREADS BOT (PLAYWRIGHT)
 # ==========================================
 class ThreadsBot:
-    def __init__(
-        self,
-        account_code: str,
-        email: str,
-        password: str,
-        secret_2fa: str = "",
-        headless=True,
-    ):
+    def __init__(self, account_code: str, email: str, password: str, secret_2fa: str = "", headless=True):
         self.headless = headless
         self.account_code = account_code
         self.email = email
         self.password = password
         self.secret_2fa = secret_2fa
 
-        # Lấy Email làm tên file Cookie để độc lập với AccountsCode
         safe_email = re.sub(r"[^a-zA-Z0-9]", "_", self.email)
         self.cookie_file = os.path.join(BASE_DIR, "cookies", f"{safe_email}.json")
         os.makedirs(os.path.dirname(self.cookie_file), exist_ok=True)
@@ -218,30 +190,24 @@ class ThreadsBot:
         is_logged_in = await self._is_logged_in()
 
         if not is_logged_in:
-            print(
-                f"⚠ Cookie hỏng/trống cho {self.account_code}. Tiến hành auto-login..."
-            )
+            print(f"⚠ Cookie hỏng/trống cho {self.account_code}. Tiến hành auto-login...")
             await self._login()
         else:
             print(f"✅ Tài khoản {self.account_code} đăng nhập thành công bằng Cookie.")
 
     async def close(self):
-        if self.context:
-            await self.context.close()
-        if self.browser:
-            await self.browser.close()
-        if self.pw:
-            await self.pw.stop()
+        if self.context: await self.context.close()
+        if self.browser: await self.browser.close()
+        if self.pw: await self.pw.stop()
 
+    # 👇 ĐÃ VÁ LỖI NHẬN VƠ ĐĂNG NHẬP 👇
     async def _is_logged_in(self) -> bool:
         try:
-            await self.page.wait_for_timeout(3000)
-            is_guest = await self.page.locator(
-                "text='Đăng nhập hoặc đăng ký', a[href*='/login']"
-            ).count()
-            if is_guest > 0:
+            await self.page.wait_for_timeout(4000)
+            # Tìm link hoặc nút chứa chữ Đăng nhập. Nếu có, chắc chắn là chưa đăng nhập.
+            guest_locators = self.page.locator("a[href*='/login'], button:has-text('Đăng nhập'), button:has-text('Log in')")
+            if await guest_locators.count() > 0:
                 return False
-            await self.page.wait_for_selector("a[href^='/@']", timeout=5000)
             return True
         except:
             return False
@@ -251,22 +217,18 @@ class ThreadsBot:
         try:
             await self.page.wait_for_selector('input[type="text"]', timeout=10000)
             await self.page.fill('input[type="text"]', self.email)
+            await self.page.wait_for_timeout(500)
             await self.page.fill('input[type="password"]', self.password)
-            await self.page.click(
-                'button[type="submit"], button:has-text("Log in"), button:has-text("Đăng nhập")'
-            )
+            await self.page.wait_for_timeout(500)
+            await self.page.click('button[type="submit"], button:has-text("Log in"), button:has-text("Đăng nhập")')
 
             try:
-                two_fa_input = self.page.locator(
-                    'input[name="verificationCode"], input[aria-label*="Mã"], input[aria-label*="code"]'
-                ).first
+                two_fa_input = self.page.locator('input[name="verificationCode"], input[aria-label*="Mã"], input[aria-label*="code"]').first
                 await two_fa_input.wait_for(state="visible", timeout=8000)
                 print(f"🔒 Meta yêu cầu mã 2FA cho {self.account_code}!")
 
                 if not self.secret_2fa:
-                    raise Exception(
-                        "Bị đòi mã 2FA nhưng chưa khai báo 2FA_Secret trong Google Sheet!"
-                    )
+                    raise Exception("Bị đòi mã 2FA nhưng chưa khai báo 2FA_Secret trong Google Sheet!")
 
                 totp = pyotp.TOTP(self.secret_2fa)
                 code_6_digits = totp.now()
@@ -278,9 +240,13 @@ class ThreadsBot:
             except Exception:
                 pass
 
-            await self.page.wait_for_selector("a[href^='/@']", timeout=15000)
-            print(f"✅ Đăng nhập xong cho {self.account_code}!")
+            # Xác minh lại xem đã lọt qua được cửa chưa
+            await self.page.wait_for_timeout(5000)
+            guest_locators = self.page.locator("a[href*='/login'], button:has-text('Đăng nhập'), button:has-text('Log in')")
+            if await guest_locators.count() > 0:
+                raise Exception("Kẹt ở màn hình đăng nhập (Sai Pass, sai Email hoặc Meta bắt xác minh Captcha).")
 
+            print(f"✅ Đăng nhập xong cho {self.account_code}!")
             await self.context.storage_state(path=self.cookie_file)
             print(f"💾 Đã lưu Cookie mới vào: {self.cookie_file}")
 
@@ -288,11 +254,9 @@ class ThreadsBot:
             await self.page.screenshot(path=f"error_login_{self.account_code}.png")
             raise Exception(f"❌ Login tự động thất bại. Lỗi: {e}")
 
-    # Lấy URL của bài cũ nhất trước khi đăng bài mới
     async def _get_latest_post_url(self) -> str:
         username = await self.get_profile_name()
-        if not username:
-            return ""
+        if not username: return ""
         await self.page.goto(f"{THREADS_URL}/{username}", wait_until="networkidle")
         await self.page.wait_for_timeout(3000)
         link_locator = self.page.locator("a[href*='/post/']").first
@@ -301,37 +265,25 @@ class ThreadsBot:
             return f"{THREADS_URL}{href}" if href.startswith("/") else href
         return ""
 
-    # 👇 GIẢI PHÁP 2: Đợi cho đến khi URL bài cũ bị thay thế bởi URL bài mới
     async def _wait_for_new_post(self, old_url: str) -> str:
         username = await self.get_profile_name()
-        if not username:
-            return ""
-
-        for attempt in range(6):  # Cố gắng F5 tối đa 6 lần
+        if not username: return ""
+        for attempt in range(6):  
             print(f"   ⏳ F5 tải lại trang cá nhân (Lần {attempt + 1}/6)...")
             await self.page.goto(f"{THREADS_URL}/{username}", wait_until="networkidle")
             await self.page.wait_for_timeout(4000)
-
             link_locator = self.page.locator("a[href*='/post/']").first
             if await link_locator.count() > 0:
                 current_url = await link_locator.get_attribute("href")
-                full_url = (
-                    f"{THREADS_URL}{current_url}"
-                    if current_url.startswith("/")
-                    else current_url
-                )
-
-                # Nếu link bài trên cùng khác với link bài cũ -> Chắc chắn là bài mới
+                full_url = f"{THREADS_URL}{current_url}" if current_url.startswith("/") else current_url
                 if full_url != old_url:
                     return full_url
-
-            await self.page.wait_for_timeout(3000)  # Đợi xíu rồi vòng lại F5 tiếp
+            await self.page.wait_for_timeout(3000) 
         return ""
 
     async def post(self, text: str, image_path: str | None = None):
         text = normalize_threads_content(text)
-        if not text.strip():
-            raise ValueError("❌ Nội dung bài post trống")
+        if not text.strip(): raise ValueError("❌ Nội dung bài post trống")
 
         print("🔍 Đang ghi nhận link bài cũ trên tường để đối chiếu...")
         old_post_url = await self._get_latest_post_url()
@@ -340,8 +292,7 @@ class ThreadsBot:
         await self._type_text(text)
         time.sleep(2)
 
-        if image_path:
-            await self._upload_image(image_path)
+        if image_path: await self._upload_image(image_path)
 
         print("🚀 Đang bấm nút đăng bài...")
         await self._submit_post()
@@ -349,24 +300,19 @@ class ThreadsBot:
         print("🔍 Đang chờ Threads load xong bài viết mới...")
         post_url = await self._wait_for_new_post(old_post_url)
         if not post_url:
-            raise Exception(
-                "❌ Post KHÔNG xuất hiện trên Threads profile sau thời gian đợi"
-            )
+            raise Exception("❌ Post KHÔNG xuất hiện trên Threads profile sau thời gian đợi")
         return post_url
 
     async def reply_to_post(self, post_url: str, text: str):
         text = normalize_threads_content(text)
-        if not text.strip():
-            return
+        if not text.strip(): return
 
         print("💬 Đang tiến hành thả comment phụ (Thread Content)...")
         await self.page.goto(post_url, wait_until="networkidle")
         await self.page.wait_for_timeout(random.randint(4000, 6000))
 
         try:
-            reply_btn = self.page.locator(
-                "svg[aria-label='Trả lời'], svg[aria-label='Reply']"
-            ).first
+            reply_btn = self.page.locator("svg[aria-label='Trả lời'], svg[aria-label='Reply']").first
             await reply_btn.wait_for(state="visible", timeout=10000)
             await reply_btn.click()
             await self.page.wait_for_timeout(2000)
@@ -389,8 +335,7 @@ class ThreadsBot:
         try:
             el = await self.page.wait_for_selector("a[href^='/@']", timeout=5000)
             return await el.get_attribute("href")
-        except:
-            return ""
+        except: return ""
 
     async def _open_composer(self):
         try:
@@ -414,9 +359,7 @@ class ThreadsBot:
                         await trigger_en.wait_for(state="visible", timeout=3000)
                         await trigger_en.click()
                     except:
-                        plus_btn = self.page.locator(
-                            "svg[aria-label='Tạo'], svg[aria-label='Create'], svg[aria-label='Bắt đầu thread mới']"
-                        ).first
+                        plus_btn = self.page.locator("svg[aria-label='Tạo'], svg[aria-label='Create'], svg[aria-label='Bắt đầu thread mới']").first
                         await plus_btn.click(timeout=5000)
 
             time.sleep(2)
@@ -426,9 +369,7 @@ class ThreadsBot:
             time.sleep(random.uniform(*POST_DELAY_RANGE))
 
         except Exception as e:
-            await self.page.screenshot(
-                path=f"error_open_composer_{self.account_code}.png"
-            )
+            await self.page.screenshot(path=f"error_open_composer_{self.account_code}.png")
             raise Exception(f"Không thể mở khung đăng bài: {e}")
 
     async def _type_text(self, text: str):
@@ -494,7 +435,7 @@ async def run():
             email=acc_info["email"],
             password=acc_info["password"],
             secret_2fa=acc_info["secret_2fa"],
-            headless=True,  # 👈 Chạy trên Github nhớ để True
+            headless=True,
         )
 
         image_path = None
@@ -537,7 +478,6 @@ async def run():
             time.sleep(wait_time)
 
     print("🎯 HOÀN TẤT QUÉT & ĐĂNG TẤT CẢ CÁC BÀI!")
-
 
 if __name__ == "__main__":
     asyncio.run(run())
