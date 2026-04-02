@@ -80,3 +80,65 @@ Nếu Tool báo lỗi trên GitHub Actions:
 Truy cập tab **Actions** trên GitHub, bấm vào lần chạy bị lỗi.
 
 Cuộn xuống phần **Artifacts**, tải file `error-screenshots.zip` về máy để xem ảnh chụp màn hình lúc trình duyệt ảo bị lỗi, từ đó dễ dàng fix bug do sai mã hay do Meta cập nhật giao diện.
+
+
+
+BƯỚC 1: Khai báo thêm vào cột 2FA_Secret bên Sheet Accounts 
+
+Nếu điền thêm Acc bên sheet Accounts thì cần điền thêm vào cột 2FA_Secret 
+
+Cách lấy 2FA_Secret : 
+
+Mở Instagram -> Vào Cài đặt -> Trung tâm tài khoản (Meta Account Center). 
+
+Chọn Mật khẩu và bảo mật -> Xác thực 2 yếu tố. 
+
+Chọn tài khoản cần lấy -> Chọn phương thức Ứng dụng xác thực (Authenticator App). 
+
+2FA_Secret nằm bên dưới mã QR  
+
+BƯỚC 2: Đăng nhập lần đầu để tạo Hồ sơ (Profile) 
+
+Down file login.py từ git về máy  
+
+Mở cửa sổ lệnh (Terminal / Command Prompt) tại thư mục chứa file này. 
+
+Gõ dòng lệnh sau và nhấn Enter: 
+
+python login.py 
+
+Nhập AccountsCode bên sheet Accounts ứng với tài khoản đã thêm và nhấn Enter. 
+
+Lúc này, một cửa sổ Google Chrome (trình duyệt thật) sẽ tự động bật lên và vào sẵn trang chủ Threads. 
+
+Đăng nhập tài khoản đã thêm bằng Email, Password và nhập mã xác nhận 6 số. 
+
+Đăng nhập thành công rồi đóng hẳn trình duyệt Chrome đó lại. 
+
+Quay lại cửa sổ CMD , Nhấn Enter một lần nữa để lưu hồ sơ đăng nhập ở thư mục profile/< AccountsCode>. 
+
+BƯỚC 3: Trích xuất File Cookie từ Hồ sơ (Profile) ở bước 2  
+
+Down file get_cookie.py từ git về máy  
+
+Mở cửa sổ lệnh (Terminal / Command Prompt) tại thư mục chứa file này. 
+
+Gõ dòng lệnh sau và nhấn Enter: 
+
+python get_cookie.py 
+
+Gõ AccountsCode bên sheet Accounts ứng với tài khoản đã thêm và nhấn Enter. 
+
+Hệ thống sẽ báo thành công và tạo ra một file tên là < AccountsCode>.json nằm bên trong thư mục cookies. 
+
+BƯỚC 4: Đưa file cho Git tự động  
+
+Mở trang web Git chứa code đã push  
+
+Click mở thư mục có tên là cookies. 
+
+Ở góc phải, chọn nút Add file -> Chọn Upload files. 
+
+Kéo và thả file < AccountsCode>.json (vừa tạo ở Bước 3) vào ô trống trên GitHub. 
+
+Cuộn xuống dưới cùng, click Commit changes để lưu lại. 
