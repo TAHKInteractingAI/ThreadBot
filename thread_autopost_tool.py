@@ -200,14 +200,19 @@ class ThreadsBot:
         if self.browser: await self.browser.close()
         if self.pw: await self.pw.stop()
 
-    # 👇 ĐÃ VÁ LỖI NHẬN VƠ ĐĂNG NHẬP 👇
+    # 👇 ĐÃ SỬA: NHẬN DIỆN CHẾ ĐỘ KHÁCH CHUẨN XÁC 100% 👇
     async def _is_logged_in(self) -> bool:
         try:
             await self.page.wait_for_timeout(4000)
-            # Tìm link hoặc nút chứa chữ Đăng nhập. Nếu có, chắc chắn là chưa đăng nhập.
-            guest_locators = self.page.locator("a[href*='/login'], button:has-text('Đăng nhập'), button:has-text('Log in')")
-            if await guest_locators.count() > 0:
+            
+            # Kiểm tra xem các dòng chữ đặc trưng của Khách có hiện trên màn hình không
+            guest_1 = self.page.locator("text='Đăng nhập hoặc đăng ký'").first
+            guest_2 = self.page.locator("text='Đăng nhập bằng tên người dùng'").first
+            guest_3 = self.page.locator("text='Log in with phone'").first
+            
+            if await guest_1.is_visible() or await guest_2.is_visible() or await guest_3.is_visible():
                 return False
+                
             return True
         except:
             return False
@@ -215,6 +220,18 @@ class ThreadsBot:
     async def _login(self):
         await self.page.goto(f"{THREADS_URL}/login", wait_until="networkidle")
         try:
+            await self.page.wait_for_timeout(3000)
+
+            # 👇 ĐÃ SỬA: TỰ ĐỘNG BẤM VÀO CHỮ ĐỂ GỌI FORM ĐĂNG NHẬP RA 👇
+            try:
+                switch_btn = self.page.locator("text='Đăng nhập bằng tên người dùng', text='Log in with phone', text='Log in with email'").first
+                if await switch_btn.is_visible(timeout=5000):
+                    print("🔄 Đang click mở Form gõ Email/Password...")
+                    await switch_btn.click()
+                    await self.page.wait_for_timeout(2000)
+            except Exception:
+                pass # Nếu Form đã hiện sẵn thì nó bỏ qua bước này
+
             await self.page.wait_for_selector('input[type="text"]', timeout=10000)
             await self.page.fill('input[type="text"]', self.email)
             await self.page.wait_for_timeout(500)
@@ -240,10 +257,11 @@ class ThreadsBot:
             except Exception:
                 pass
 
-            # Xác minh lại xem đã lọt qua được cửa chưa
             await self.page.wait_for_timeout(5000)
-            guest_locators = self.page.locator("a[href*='/login'], button:has-text('Đăng nhập'), button:has-text('Log in')")
-            if await guest_locators.count() > 0:
+            
+            # Kiểm tra xem có bị kẹt lại ở Form đăng nhập do sai pass/email không
+            guest_check = self.page.locator("text='Đăng nhập bằng tên người dùng', button:has-text('Đăng nhập'), button:has-text('Log in')").first
+            if await guest_check.is_visible():
                 raise Exception("Kẹt ở màn hình đăng nhập (Sai Pass, sai Email hoặc Meta bắt xác minh Captcha).")
 
             print(f"✅ Đăng nhập xong cho {self.account_code}!")
@@ -435,7 +453,7 @@ async def run():
             email=acc_info["email"],
             password=acc_info["password"],
             secret_2fa=acc_info["secret_2fa"],
-            headless=True,
+            headless=True, # 👈 Chạy trên Github nhớ để True
         )
 
         image_path = None
