@@ -105,63 +105,41 @@ Nếu điền thêm account bên sheet **Accounts** thì cần điền thêm và
 🔑 Cách lấy 2FA_Secret
 Mở Instagram → Vào Cài đặt → Trung tâm tài khoản (Meta Account Center)
 Chọn Mật khẩu và bảo mật → Xác thực 2 yếu tố
-Chọn tài khoản cần lấy → Chọn phương thức Ứng dụng xác thực (Authenticator App)
+Chọn tài khoản → Ứng dụng xác thực (Authenticator App)
 2FA_Secret nằm bên dưới mã QR
 🔐 BƯỚC 2: Đăng nhập lần đầu để tạo Hồ sơ (Profile)
 Down file login.py từ Git về máy
-Mở cửa sổ lệnh (Terminal / Command Prompt) tại thư mục chứa file
-Gõ dòng lệnh sau và nhấn Enter:
+Mở Terminal tại thư mục chứa file
+
+Chạy lệnh:
+
 python login.py
-Nhập AccountsCode bên sheet Accounts ứng với tài khoản đã thêm và nhấn Enter
-Lúc này, một cửa sổ Google Chrome (trình duyệt thật) sẽ tự động bật lên và vào sẵn trang chủ Threads
-Đăng nhập tài khoản đã thêm bằng:
+Nhập AccountsCode
+Chrome sẽ tự mở Threads
+Đăng nhập bằng:
 Email
 Password
-Mã xác nhận 6 số
-Đăng nhập thành công rồi đóng hẳn trình duyệt Chrome đó lại
-Quay lại cửa sổ CMD, nhấn Enter một lần nữa để lưu hồ sơ đăng nhập ở thư mục:
+Mã 6 số
+Đóng Chrome sau khi login thành công
+Quay lại CMD → nhấn Enter để lưu profile:
 profile/<AccountsCode>
-🍪 BƯỚC 3: Trích xuất File Cookie từ Hồ sơ (Profile) ở bước 2
-Down file get_cookie.py từ Git về máy
-Mở cửa sổ lệnh (Terminal / Command Prompt) tại thư mục chứa file
-Gõ dòng lệnh sau và nhấn Enter:
+🍪 BƯỚC 3: Trích xuất Cookie
+Down file get_cookie.py
+Mở Terminal tại thư mục chứa file
+
+Chạy:
+
 python get_cookie.py
-Gõ AccountsCode bên sheet Accounts ứng với tài khoản đã thêm và nhấn Enter
-Hệ thống sẽ báo thành công và tạo ra file:
+Nhập AccountsCode
+
+File sẽ được tạo tại:
+
 cookies/<AccountsCode>.json
-☁️ BƯỚC 4: Đưa file cho Git tự động
-Mở trang web GitHub chứa code đã push
-Click mở thư mục:
+☁️ BƯỚC 4: Upload lên GitHub
+Mở repo
+Vào thư mục:
 cookies
-Ở góc phải, chọn:
-Add file → Upload files
-Kéo và thả file:
+Chọn Add file → Upload files
+Upload file:
 <AccountsCode>.json
-Cuộn xuống dưới cùng, click Commit changes để lưu lại
-✅ Hoàn tất
-
-Sau khi hoàn thành tất cả các bước trên:
-
-Account đã được cấu hình đầy đủ
-Profile đã được lưu
-Cookie đã được upload lên GitHub
-Hệ thống có thể tự động chạy với account mới
-⚠️ Lưu ý quan trọng
-Không chia sẻ file cookie .json cho người khác
-Không thay đổi cấu trúc thư mục:
-profile/
-cookies/
-Đảm bảo 2FA_Secret chính xác, nếu sai sẽ không login được
-Nếu gặp lỗi login → thử chạy lại từ BƯỚC 2
-🛠 Troubleshooting
-
-Không login được:
-
-Kiểm tra lại Email / Password
-Kiểm tra 2FA_Secret
-Đảm bảo nhập đúng AccountsCode
-
-Không tạo được cookie:
-
-Kiểm tra đã login thành công chưa
-Kiểm tra thư mục profile/ đã có dữ liệu chưa
+Click Commit changes
