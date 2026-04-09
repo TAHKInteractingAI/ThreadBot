@@ -52,7 +52,8 @@ DELAY_BETWEEN_POSTS = (60, 180)
 # ULTILS
 # =========================
 def normalize_threads_content(text: str) -> str:
-    if not text: return ""
+    if not text:
+        return ""
     t = text.strip()
     t = re.sub(r"\s{2,}", " ", t)
     t = re.sub(r"\s*(\p{Extended_Pictographic})", r"\n\1", t)
@@ -60,17 +61,23 @@ def normalize_threads_content(text: str) -> str:
     t = re.sub(r"\n{2,}", "\n", t)
     return t.strip()
 
+
 def convert_google_drive(url: str) -> str:
     match = re.search(r"/d/([^/]+)/", url)
-    if match: return f"https://drive.google.com/uc?export=download&id={match.group(1)}"
+    if match:
+        return f"https://drive.google.com/uc?export=download&id={match.group(1)}"
     match = re.search(r"id=([^&]+)", url)
-    if match: return f"https://drive.google.com/uc?export=download&id={match.group(1)}"
+    if match:
+        return f"https://drive.google.com/uc?export=download&id={match.group(1)}"
     return url
+
 
 def get_filename_from_response(response, default="image.jpg"):
     cd = response.headers.get("Content-Disposition", "")
-    if "filename=" in cd: return cd.split("filename=")[-1].strip('"')
+    if "filename=" in cd:
+        return cd.split("filename=")[-1].strip('"')
     return default
+
 
 def make_square(image_path, min_size=1080, fill_color=(0, 0, 0)):
     img = Image.open(image_path)
@@ -79,6 +86,7 @@ def make_square(image_path, min_size=1080, fill_color=(0, 0, 0)):
     new_img = Image.new("RGB", (size, size), fill_color)
     new_img.paste(img, ((size - w) // 2, (size - h) // 2))
     new_img.save(image_path)
+
 
 def download_image(url, folder="tmp_images"):
     folder_path = os.path.join(BASE_DIR, folder)
@@ -89,18 +97,24 @@ def download_image(url, folder="tmp_images"):
         raise Exception(f"Image download failed: {response.status_code}")
     filename = get_filename_from_response(response).replace("/", "_")
     full_path = os.path.join(folder_path, filename)
-    with open(full_path, "wb") as f: f.write(response.content)
+    with open(full_path, "wb") as f:
+        f.write(response.content)
     make_square(full_path)
     return full_path
+
 
 # =========================
 # GOOGLE SHEET LOGIC
 # =========================
 def connect_sheet(tab_name):
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive",
+    ]
     creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIAL_FILE, scope)
     client = gspread.authorize(creds)
     return client.open_by_url(RECRUIT_SHEET_URL).worksheet(tab_name)
+
 
 def get_all_accounts():
     sheet = connect_sheet(ACCOUNT_TAB_NAME)
@@ -115,16 +129,20 @@ def get_all_accounts():
             }
     return accounts
 
+
 def get_unposted_rows(limit=MAX_POSTS_PER_RUN):
     sheet = connect_sheet(RECRUIT_TAB_NAME)
     rows = sheet.get_all_records()
     results = []
     for idx, row in enumerate(rows, start=2):
         posted = str(row.get(COL_POSTED, "")).strip().upper()
-        if posted == "YES": continue
+        if posted == "YES":
+            continue
         results.append({"row_index": idx, "data": row})
-        if len(results) >= limit: break
+        if len(results) >= limit:
+            break
     return results
+
 
 def mark_posted(row_index: int, post_url: str):
     sheet = connect_sheet(RECRUIT_TAB_NAME)
@@ -134,11 +152,13 @@ def mark_posted(row_index: int, post_url: str):
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_LINK_POST), post_url)
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_DATE), now_time)
 
+
 def _col_index(tab_name: str, col_name: str) -> int:
     sheet = connect_sheet(tab_name)
     headers = sheet.row_values(1)
     for i, h in enumerate(headers, start=1):
-        if h.strip() == col_name: return i
+        if h.strip() == col_name:
+            return i
     raise Exception(f"❌ Không tìm thấy cột: {col_name} trong tab {tab_name}")
 
 
@@ -152,8 +172,9 @@ class ThreadsBot:
         self.email = email
         self.password = password
 
-        safe_email = re.sub(r"[^a-zA-Z0-9]", "_", self.email)
-        self.cookie_file = os.path.join(BASE_DIR, "cookies", f"{safe_email}.json")
+        self.cookie_file = os.path.join(
+            BASE_DIR, "cookies", f"{self.account_code}.json"
+        )
         os.makedirs(os.path.dirname(self.cookie_file), exist_ok=True)
 
         self.pw = None
@@ -187,24 +208,33 @@ class ThreadsBot:
         is_logged_in = await self._is_logged_in()
 
         if not is_logged_in:
-            print(f"⚠ Cookie hỏng/trống cho {self.account_code}. Tiến hành auto-login...")
+            print(
+                f"⚠ Cookie hỏng hoặc chưa có cho {self.account_code}. Tiến hành auto-login..."
+            )
             await self._login()
         else:
             print(f"✅ Tài khoản {self.account_code} đăng nhập thành công bằng Cookie.")
 
     async def close(self):
-        if self.context: await self.context.close()
-        if self.browser: await self.browser.close()
-        if self.pw: await self.pw.stop()
+        if self.context:
+            await self.context.close()
+        if self.browser:
+            await self.browser.close()
+        if self.pw:
+            await self.pw.stop()
 
     async def _is_logged_in(self) -> bool:
         try:
-            await self.page.wait_for_timeout(4000)
+            await self.page.wait_for_timeout(3000)
             guest_1 = self.page.locator("text='Đăng nhập hoặc đăng ký'").first
             guest_2 = self.page.locator("text='Đăng nhập bằng tên người dùng'").first
             guest_3 = self.page.locator("text='Log in with phone'").first
-            
-            if await guest_1.is_visible() or await guest_2.is_visible() or await guest_3.is_visible():
+
+            if (
+                await guest_1.is_visible()
+                or await guest_2.is_visible()
+                or await guest_3.is_visible()
+            ):
                 return False
             return True
         except:
@@ -215,29 +245,41 @@ class ThreadsBot:
         try:
             await self.page.wait_for_timeout(3000)
             try:
-                switch_btn = self.page.locator("text='Đăng nhập bằng tên người dùng', text='Log in with phone', text='Log in with email'").first
+                switch_btn = self.page.locator(
+                    "text='Đăng nhập bằng tên người dùng', text='Log in with phone', text='Log in with email'"
+                ).first
                 if await switch_btn.is_visible(timeout=5000):
                     print("🔄 Đang click mở Form gõ Email/Password...")
                     await switch_btn.click()
                     await self.page.wait_for_timeout(2000)
             except Exception:
-                pass 
+                pass
 
-            await self.page.wait_for_selector('input[type="text"], input[name="username"]', timeout=10000)
-            await self.page.fill('input[type="text"], input[name="username"]', self.email)
-            await self.page.wait_for_timeout(1000)
-            
-            await self.page.fill('input[type="password"], input[name="password"]', self.password)
-            await self.page.wait_for_timeout(1000)
-            
+            await self.page.wait_for_selector(
+                'input[type="text"], input[name="username"]', timeout=10000
+            )
+            await self.page.fill(
+                'input[type="text"], input[name="username"]', self.email
+            )
+            await self.page.wait_for_timeout(500)
+
+            await self.page.fill(
+                'input[type="password"], input[name="password"]', self.password
+            )
+            await self.page.wait_for_timeout(500)
+
             print("🔄 Đang nhấn phím Enter để Đăng nhập...")
             await self.page.keyboard.press("Enter")
             await self.page.wait_for_timeout(6000)
 
             await self.page.wait_for_timeout(5000)
-            guest_check = self.page.locator("text='Đăng nhập bằng tên người dùng', button:has-text('Đăng nhập'), button:has-text('Log in')").first
+            guest_check = self.page.locator(
+                "text='Đăng nhập bằng tên người dùng', button:has-text('Đăng nhập'), button:has-text('Log in')"
+            ).first
             if await guest_check.is_visible():
-                raise Exception("Kẹt ở màn hình đăng nhập (Bị vướng Captcha hoặc Checkpoint). Hãy dùng script get_cookie trên máy tính.")
+                raise Exception(
+                    "Kẹt ở màn hình đăng nhập (Bị vướng Captcha hoặc Checkpoint). Hãy dùng script get_cookie trên máy tính."
+                )
 
             print(f"✅ Đăng nhập xong cho {self.account_code}!")
             await self.context.storage_state(path=self.cookie_file)
@@ -247,13 +289,13 @@ class ThreadsBot:
             await self.page.screenshot(path=f"error_login_{self.account_code}.png")
             raise Exception(f"❌ Login tự động thất bại. Lỗi: {e}")
 
-    # 👇 ĐÃ VÁ: Lấy 5 bài cũ nhất thay vì 1 bài để tránh "Bài Ghim" 👇
-    async def _get_recent_post_urls(self) -> set:
+    async def _get_latest_post_url(self) -> str:
         username = await self.get_profile_name()
-        if not username: return set()
+        if not username:
+            return ""
         await self.page.goto(f"{THREADS_URL}/{username}", wait_until="networkidle")
         await self.page.wait_for_timeout(3000)
-        
+
         urls = set()
         link_locators = self.page.locator("a[href*='/post/']")
         count = await link_locators.count()
@@ -264,53 +306,43 @@ class ThreadsBot:
                 urls.add(full_url)
         return urls
 
-    # 👇 ĐÃ VÁ: So sánh với tập hợp 5 bài cũ 👇
     async def _wait_for_new_post(self, old_urls: set) -> str:
         username = await self.get_profile_name()
-        if not username: return ""
+        if not username:
+            return ""
 
-        for attempt in range(6):  
+        for attempt in range(6):
             print(f"   ⏳ F5 tải lại trang cá nhân (Lần {attempt + 1}/6)...")
             await self.page.goto(f"{THREADS_URL}/{username}", wait_until="networkidle")
             await self.page.wait_for_timeout(5000)
-            
+
             link_locators = self.page.locator("a[href*='/post/']")
             count = await link_locators.count()
             for i in range(min(5, count)):
                 href = await link_locators.nth(i).get_attribute("href")
                 if href:
                     full_url = f"{THREADS_URL}{href}" if href.startswith("/") else href
-                    # Nếu thấy link nào CHƯA TỪNG CÓ trong tập hợp cũ -> Chính là nó!
                     if full_url not in old_urls:
                         return full_url
 
-            await self.page.wait_for_timeout(3000) 
-            
-        # Nếu F5 6 lần vẫn không có bài, chụp ảnh lại để bắt bệnh!
+            await self.page.wait_for_timeout(3000)
+
         await self.page.screenshot(path=f"error_missing_post_{self.account_code}.png")
         return ""
 
     async def post(self, text: str, image_path: str | None = None):
-        text = normalize_threads_content(text)
-        if not text.strip(): raise ValueError("❌ Nội dung bài post trống")
+        if not text.strip():
+            raise ValueError("❌ Nội dung bài post trống")
 
         print("🔍 Đang ghi nhận danh sách bài cũ trên tường để đối chiếu...")
-        old_post_urls = await self._get_recent_post_urls()
+        old_post_urls = await self._get_latest_post_url()
 
         await self._open_composer()
         await self._type_text(text)
         time.sleep(2)
 
-        if image_path: 
+        if image_path:
             await self._upload_image(image_path)
-            
-            # 👇 ĐÃ VÁ: Click lại vào Editor sau khi up ảnh để giành lại Focus 👇
-            try:
-                print("🔄 Đang lấy lại Focus cho khung soạn thảo...")
-                await self.page.locator("div[contenteditable='true']").first.click(timeout=3000)
-                await self.page.wait_for_timeout(1000)
-            except:
-                pass
 
         print("🚀 Đang bấm nút đăng bài...")
         await self._submit_post()
@@ -318,19 +350,23 @@ class ThreadsBot:
         print("🔍 Đang chờ Threads load xong bài viết mới...")
         post_url = await self._wait_for_new_post(old_post_urls)
         if not post_url:
-            raise Exception("❌ Post KHÔNG xuất hiện trên Threads profile. (Đã lưu ảnh error_missing_post để kiểm tra)")
+            raise Exception(
+                "❌ Post KHÔNG xuất hiện trên Threads profile. (Đã lưu ảnh error_missing_post để kiểm tra)"
+            )
         return post_url
 
     async def reply_to_post(self, post_url: str, text: str):
-        text = normalize_threads_content(text)
-        if not text.strip(): return
+        if not text.strip():
+            return
 
         print("💬 Đang tiến hành thả comment phụ (Thread Content)...")
         await self.page.goto(post_url, wait_until="networkidle")
         await self.page.wait_for_timeout(random.randint(4000, 6000))
 
         try:
-            reply_btn = self.page.locator("svg[aria-label='Trả lời'], svg[aria-label='Reply']").first
+            reply_btn = self.page.locator(
+                "svg[aria-label='Trả lời'], svg[aria-label='Reply']"
+            ).first
             await reply_btn.wait_for(state="visible", timeout=10000)
             await reply_btn.click()
             await self.page.wait_for_timeout(2000)
@@ -353,7 +389,8 @@ class ThreadsBot:
         try:
             el = await self.page.wait_for_selector("a[href^='/@']", timeout=5000)
             return await el.get_attribute("href")
-        except: return ""
+        except:
+            return ""
 
     async def _open_composer(self):
         try:
@@ -377,7 +414,9 @@ class ThreadsBot:
                         await trigger_en.wait_for(state="visible", timeout=3000)
                         await trigger_en.click()
                     except:
-                        plus_btn = self.page.locator("svg[aria-label='Tạo'], svg[aria-label='Create'], svg[aria-label='Bắt đầu thread mới']").first
+                        plus_btn = self.page.locator(
+                            "svg[aria-label='Tạo'], svg[aria-label='Create'], svg[aria-label='Bắt đầu thread mới']"
+                        ).first
                         await plus_btn.click(timeout=5000)
 
             time.sleep(2)
@@ -387,7 +426,9 @@ class ThreadsBot:
             time.sleep(random.uniform(*POST_DELAY_RANGE))
 
         except Exception as e:
-            await self.page.screenshot(path=f"error_open_composer_{self.account_code}.png")
+            await self.page.screenshot(
+                path=f"error_open_composer_{self.account_code}.png"
+            )
             raise Exception(f"Không thể mở khung đăng bài: {e}")
 
     async def _type_text(self, text: str):
@@ -400,21 +441,27 @@ class ThreadsBot:
         await file_input.set_input_files(image_path)
         await self.page.wait_for_timeout(5000)
 
-    # 👇 ĐÃ VÁ: Ưu tiên click nút Đăng/Post thay vì chỉ dùng phím tắt 👇
     async def _submit_post(self):
         try:
-            post_btn = self.page.locator("div[role='button']").filter(has_text=re.compile(r"^(Đăng|Post)$")).first
-            if await post_btn.is_visible(timeout=2000):
-                await post_btn.click()
-            else:
-                raise Exception("Không tìm thấy nút")
+            editor = self.page.locator("div[contenteditable='true']").first
+            await editor.click(force=True, timeout=2000)
+            await self.page.wait_for_timeout(500)
         except:
+            pass
+
+        try:
+            post_btn = (
+                self.page.locator("div[role='button']")
+                .filter(has_text=re.compile(r"^(Đăng|Post)$"))
+                .first
+            )
+            await post_btn.scroll_into_view_if_needed(timeout=2000)
+            await post_btn.click(force=True, timeout=3000)
+        except Exception:
             await self.page.keyboard.down("Control")
             await self.page.keyboard.press("Enter")
             await self.page.keyboard.up("Control")
-            time.sleep(1)
-            await self.page.keyboard.press("Enter")
-            
+
         time.sleep(8)
 
 
@@ -452,8 +499,24 @@ async def run():
         if not acc_code or acc_code not in accounts_dict:
             print(f"⚠ Mã account '{acc_code}' không hợp lệ hoặc trống → SKIP")
             continue
+
         if not job_content:
             print("⚠ Job Content (Bài chính) trống → SKIP")
+            continue
+
+        # 👇 THÊM "TRẠM KIỂM DUYỆT" 500 KÝ TỰ Ở ĐÂY 👇
+        job_content_normalized = normalize_threads_content(job_content)
+        if len(job_content_normalized) > 500:
+            print(
+                f"🛑 BỎ QUA BÀI ĐĂNG: Nội dung bài chính quá dài ({len(job_content_normalized)} ký tự > 500 ký tự cho phép của Threads)."
+            )
+            continue
+
+        thread_content_normalized = normalize_threads_content(thread_content)
+        if len(thread_content_normalized) > 500:
+            print(
+                f"🛑 BỎ QUA BÀI ĐĂNG: Nội dung bình luận phụ (Thread Content) quá dài ({len(thread_content_normalized)} ký tự > 500 ký tự cho phép)."
+            )
             continue
 
         acc_info = accounts_dict[acc_code]
@@ -461,7 +524,7 @@ async def run():
             account_code=acc_code,
             email=acc_info["email"],
             password=acc_info["password"],
-            headless=True, # 👈 Chạy trên Github nhớ để True
+            headless=True,  # 👈 Chạy trên Github nhớ để True
         )
 
         image_path = None
@@ -475,12 +538,16 @@ async def run():
                     raise Exception(f"❌ Tải ảnh thất bại: {e}")
 
             # ĐĂNG BÀI CHÍNH
-            post_url = await bot.post(text=job_content, image_path=image_path)
+            post_url = await bot.post(
+                text=job_content_normalized, image_path=image_path
+            )
             print(f"🔗 Post URL (Bài chính): {post_url}")
 
             # ĐĂNG BÌNH LUẬN PHỤ
-            if thread_content:
-                await bot.reply_to_post(post_url=post_url, text=thread_content)
+            if thread_content_normalized:
+                await bot.reply_to_post(
+                    post_url=post_url, text=thread_content_normalized
+                )
 
             mark_posted(row_index=row_index, post_url=post_url)
 
@@ -504,6 +571,7 @@ async def run():
             time.sleep(wait_time)
 
     print("🎯 HOÀN TẤT QUÉT & ĐĂNG TẤT CẢ CÁC BÀI!")
+
 
 if __name__ == "__main__":
     asyncio.run(run())
