@@ -199,7 +199,7 @@ class ThreadsBot:
 
         if os.path.exists(self.cookie_file):
             context_options["storage_state"] = self.cookie_file
-            print(f"🍪 Đã tìm thấy Cookie cho {self.email}. Đang nạp...")
+            print(f"🍪 Đã tìm thấy Cookie cho {self.account_code}. Đang nạp...")
 
         self.context = await self.browser.new_context(**context_options)
         self.page = await self.context.new_page()
@@ -330,7 +330,8 @@ class ThreadsBot:
         await self.page.screenshot(path=f"error_missing_post_{self.account_code}.png")
         return ""
 
-    async def post(self, text: str, image_path: str | None = None):
+    # 👇 ĐÃ SỬA: Hàm Post nhận thêm biến Topic để gắn thẻ 👇
+    async def post(self, text: str, image_path: str | None = None, topic: str = ""):
         if not text.strip():
             raise ValueError("❌ Nội dung bài post trống")
 
@@ -339,6 +340,20 @@ class ThreadsBot:
 
         await self._open_composer()
         await self._type_text(text)
+
+        # --- BỘ PHẬN XỬ LÝ GẮN THẺ CHỦ ĐỀ (TOPIC) ---
+        if topic:
+            clean_topic = topic.replace("#", "").strip()
+            if clean_topic:
+                print(f"🏷️ Đang gắn Chủ đề (Topic): {clean_topic}...")
+                # Xuống dòng và gõ # kèm tên chủ đề để gọi menu gợi ý
+                await self.page.keyboard.type(f"\n\n#{clean_topic}", delay=150)
+                await self.page.wait_for_timeout(2000)
+
+                # Nhấn Enter để chốt chọn chủ đề từ danh sách Threads gợi ý
+                await self.page.keyboard.press("Enter")
+                await self.page.wait_for_timeout(1000)
+
         time.sleep(2)
 
         if image_path:
@@ -490,6 +505,7 @@ async def run():
         acc_code = str(data.get(COL_ACCOUNTS_CODE, "")).strip()
         job_content = data.get(COL_JOB_CONTENT, "").strip()
         thread_content = data.get(COL_THREAD_CONTENT, "").strip()
+        topic = str(data.get(COL_TOPIC, "")).strip()  # 👈 Lấy Topic từ Sheet
         image_url = data.get(COL_IMAGE, "").strip()
 
         print("=" * 60)
@@ -504,11 +520,17 @@ async def run():
             print("⚠ Job Content (Bài chính) trống → SKIP")
             continue
 
-        # 👇 THÊM "TRẠM KIỂM DUYỆT" 500 KÝ TỰ Ở ĐÂY 👇
+        # 👇 TRẠM KIỂM DUYỆT ĐÃ TÍNH THÊM ĐỘ DÀI CỦA TOPIC 👇
         job_content_normalized = normalize_threads_content(job_content)
-        if len(job_content_normalized) > 500:
+        total_length = len(job_content_normalized)
+
+        # Nếu có Topic, cộng thêm ký tự của Topic và khoảng trắng vào tổng độ dài
+        if topic:
+            total_length += len(topic.replace("#", "").strip()) + 3
+
+        if total_length > 500:
             print(
-                f"🛑 BỎ QUA BÀI ĐĂNG: Nội dung bài chính quá dài ({len(job_content_normalized)} ký tự > 500 ký tự cho phép của Threads)."
+                f"🛑 BỎ QUA BÀI ĐĂNG: Nội dung bài chính + Chủ đề (Topic) quá dài ({total_length} ký tự > 500 ký tự cho phép của Threads)."
             )
             continue
 
@@ -537,9 +559,11 @@ async def run():
                 except Exception as e:
                     raise Exception(f"❌ Tải ảnh thất bại: {e}")
 
-            # ĐĂNG BÀI CHÍNH
+            # ĐĂNG BÀI CHÍNH (Truyền thêm topic vào hàm)
             post_url = await bot.post(
-                text=job_content_normalized, image_path=image_path
+                text=job_content_normalized,
+                image_path=image_path,
+                topic=topic,  # 👈 Truyền topic vào đây
             )
             print(f"🔗 Post URL (Bài chính): {post_url}")
 
