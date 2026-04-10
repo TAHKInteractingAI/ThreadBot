@@ -136,6 +136,7 @@ def get_unposted_rows(limit=MAX_POSTS_PER_RUN):
     results = []
     for idx, row in enumerate(rows, start=2):
         posted = str(row.get(COL_POSTED, "")).strip().upper()
+        # Chạy lại nếu cột Posted trống hoặc có chữ ERROR
         if posted == "YES":
             continue
         results.append({"row_index": idx, "data": row})
@@ -150,6 +151,16 @@ def mark_posted(row_index: int, post_url: str):
     now_time = datetime.now(tz_vn).strftime("%Y-%m-%d %H:%M:%S")
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_POSTED), "YES")
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_LINK_POST), post_url)
+    sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_DATE), now_time)
+
+
+# 👇 HÀM MỚI: Báo lỗi lên Google Sheet cho HR biết 👇
+def mark_error(row_index: int, error_msg: str):
+    sheet = connect_sheet(RECRUIT_TAB_NAME)
+    tz_vn = pytz.timezone("Asia/Ho_Chi_Minh")
+    now_time = datetime.now(tz_vn).strftime("%Y-%m-%d %H:%M:%S")
+    sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_POSTED), "ERROR")
+    sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_LINK_POST), error_msg)
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_DATE), now_time)
 
 
@@ -330,7 +341,6 @@ class ThreadsBot:
         await self.page.screenshot(path=f"error_missing_post_{self.account_code}.png")
         return ""
 
-    # 👇 ĐÃ SỬA: Hàm Post nhận thêm biến Topic để gắn thẻ 👇
     async def post(self, text: str, image_path: str | None = None, topic: str = ""):
         if not text.strip():
             raise ValueError("❌ Nội dung bài post trống")
@@ -341,16 +351,13 @@ class ThreadsBot:
         await self._open_composer()
         await self._type_text(text)
 
-        # --- BỘ PHẬN XỬ LÝ GẮN THẺ CHỦ ĐỀ (TOPIC) ---
         if topic:
             clean_topic = topic.replace("#", "").strip()
             if clean_topic:
                 print(f"🏷️ Đang gắn Chủ đề (Topic): {clean_topic}...")
-                # Xuống dòng và gõ # kèm tên chủ đề để gọi menu gợi ý
                 await self.page.keyboard.type(f"\n\n#{clean_topic}", delay=150)
                 await self.page.wait_for_timeout(2000)
 
-                # Nhấn Enter để chốt chọn chủ đề từ danh sách Threads gợi ý
                 await self.page.keyboard.press("Enter")
                 await self.page.wait_for_timeout(1000)
 
@@ -505,7 +512,7 @@ async def run():
         acc_code = str(data.get(COL_ACCOUNTS_CODE, "")).strip()
         job_content = data.get(COL_JOB_CONTENT, "").strip()
         thread_content = data.get(COL_THREAD_CONTENT, "").strip()
-        topic = str(data.get(COL_TOPIC, "")).strip()  # 👈 Lấy Topic từ Sheet
+        topic = str(data.get(COL_TOPIC, "")).strip()
         image_url = data.get(COL_IMAGE, "").strip()
 
         print("=" * 60)
@@ -520,25 +527,24 @@ async def run():
             print("⚠ Job Content (Bài chính) trống → SKIP")
             continue
 
-        # 👇 TRẠM KIỂM DUYỆT ĐÃ TÍNH THÊM ĐỘ DÀI CỦA TOPIC 👇
+        # 👇 TRẠM KIỂM DUYỆT: Tự điền LỖI vào Google Sheet nếu lố 500 ký tự 👇
         job_content_normalized = normalize_threads_content(job_content)
         total_length = len(job_content_normalized)
 
-        # Nếu có Topic, cộng thêm ký tự của Topic và khoảng trắng vào tổng độ dài
         if topic:
             total_length += len(topic.replace("#", "").strip()) + 3
 
         if total_length > 500:
-            print(
-                f"🛑 BỎ QUA BÀI ĐĂNG: Nội dung bài chính + Chủ đề (Topic) quá dài ({total_length} ký tự > 500 ký tự cho phép của Threads)."
-            )
+            error_msg = f"❌ Lỗi: Bài chính quá dài ({total_length}/500 ký tự). Vui lòng cắt bớt chữ!"
+            print(f"🛑 BỎ QUA BÀI ĐĂNG: {error_msg}")
+            mark_error(row_index, error_msg)
             continue
 
         thread_content_normalized = normalize_threads_content(thread_content)
         if len(thread_content_normalized) > 500:
-            print(
-                f"🛑 BỎ QUA BÀI ĐĂNG: Nội dung bình luận phụ (Thread Content) quá dài ({len(thread_content_normalized)} ký tự > 500 ký tự cho phép)."
-            )
+            error_msg = f"❌ Lỗi: Comment phụ quá dài ({len(thread_content_normalized)}/500 ký tự). Vui lòng cắt bớt chữ!"
+            print(f"🛑 BỎ QUA BÀI ĐĂNG: {error_msg}")
+            mark_error(row_index, error_msg)
             continue
 
         acc_info = accounts_dict[acc_code]
@@ -559,11 +565,11 @@ async def run():
                 except Exception as e:
                     raise Exception(f"❌ Tải ảnh thất bại: {e}")
 
-            # ĐĂNG BÀI CHÍNH (Truyền thêm topic vào hàm)
+            # ĐĂNG BÀI CHÍNH
             post_url = await bot.post(
                 text=job_content_normalized,
                 image_path=image_path,
-                topic=topic,  # 👈 Truyền topic vào đây
+                topic=topic,
             )
             print(f"🔗 Post URL (Bài chính): {post_url}")
 
