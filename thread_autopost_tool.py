@@ -116,9 +116,17 @@ def connect_sheet(tab_name):
     return client.open_by_url(RECRUIT_SHEET_URL).worksheet(tab_name)
 
 
+# 👇 ĐÃ VÁ LỖI DUPLICATE HEADER TRONG TAB ACCOUNTS 👇
 def get_all_accounts():
     sheet = connect_sheet(ACCOUNT_TAB_NAME)
-    records = sheet.get_all_records()
+    all_values = sheet.get_all_values()
+    if len(all_values) < 2:
+        return {}
+        
+    headers = all_values[0]
+    # Ép ghép tiêu đề thủ công để bỏ qua lỗi cột trống
+    records = [dict(zip(headers, row)) for row in all_values[1:]]
+    
     accounts = {}
     for row in records:
         code = str(row.get("AccountsCode", "")).strip()
@@ -130,13 +138,20 @@ def get_all_accounts():
     return accounts
 
 
+# 👇 ĐÃ VÁ LỖI DUPLICATE HEADER TRONG TAB RECRUITMENT 👇
 def get_unposted_rows(limit=MAX_POSTS_PER_RUN):
     sheet = connect_sheet(RECRUIT_TAB_NAME)
-    rows = sheet.get_all_records()
+    all_values = sheet.get_all_values()
+    if len(all_values) < 2:
+        return []
+        
+    headers = all_values[0]
+    # Ép ghép tiêu đề thủ công để bỏ qua lỗi cột trống
+    rows = [dict(zip(headers, row)) for row in all_values[1:]]
+    
     results = []
     for idx, row in enumerate(rows, start=2):
         posted = str(row.get(COL_POSTED, "")).strip().upper()
-        # Chạy lại nếu cột Posted trống hoặc có chữ ERROR
         if posted == "YES":
             continue
         results.append({"row_index": idx, "data": row})
@@ -154,7 +169,6 @@ def mark_posted(row_index: int, post_url: str):
     sheet.update_cell(row_index, _col_index(RECRUIT_TAB_NAME, COL_DATE), now_time)
 
 
-# 👇 HÀM MỚI: Báo lỗi lên Google Sheet cho HR biết 👇
 def mark_error(row_index: int, error_msg: str):
     sheet = connect_sheet(RECRUIT_TAB_NAME)
     tz_vn = pytz.timezone("Asia/Ho_Chi_Minh")
