@@ -1,11 +1,6 @@
 name: Threads Auto Post Cronjob
 
 on:
-  schedule:
-    # 9h30 sáng giờ Việt Nam
-    - cron: '30 2 * * *'
-    # 21h30 tối giờ Việt Nam
-    - cron: '30 14 * * *'
   workflow_dispatch: 
 
 jobs:
