@@ -54,11 +54,9 @@ DELAY_BETWEEN_POSTS = (60, 180)
 def normalize_threads_content(text: str) -> str:
     if not text:
         return ""
-    t = text.strip()
-    t = re.sub(r"\s{2,}", " ", t)
-    t = re.sub(r"\s*(\p{Extended_Pictographic})", r"\n\1", t)
-    t = re.sub(r"(\?)\s+", r"\1\n", t)
-    t = re.sub(r"\n{2,}", "\n", t)
+    t = text.replace("\r\n", "\n").strip()
+    t = re.sub(r"[ \t]{2,}", " ", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
 
 
@@ -122,11 +120,11 @@ def get_all_accounts():
     all_values = sheet.get_all_values()
     if len(all_values) < 2:
         return {}
-        
+
     headers = all_values[0]
     # Ép ghép tiêu đề thủ công để bỏ qua lỗi cột trống
     records = [dict(zip(headers, row)) for row in all_values[1:]]
-    
+
     accounts = {}
     for row in records:
         code = str(row.get("AccountsCode", "")).strip()
@@ -144,11 +142,11 @@ def get_unposted_rows(limit=MAX_POSTS_PER_RUN):
     all_values = sheet.get_all_values()
     if len(all_values) < 2:
         return []
-        
+
     headers = all_values[0]
     # Ép ghép tiêu đề thủ công để bỏ qua lỗi cột trống
     rows = [dict(zip(headers, row)) for row in all_values[1:]]
-    
+
     results = []
     for idx, row in enumerate(rows, start=2):
         posted = str(row.get(COL_POSTED, "")).strip().upper()
