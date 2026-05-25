@@ -316,10 +316,29 @@ class ThreadsBot:
             )
             raise Exception(f"❌ Login tự động thất bại. Lỗi: {e}")
 
+    # 👇 ĐÃ SỬA: Tăng thời gian chờ và BẮT BUỘC CHỤP ẢNH nếu lỗi 👇
+    async def get_profile_name(self) -> str:
+        try:
+            # Tăng timeout lên 15 giây cho Cloud
+            el = await self.page.wait_for_selector("a[href^='/@']", timeout=15000)
+            return await el.get_attribute("href")
+        except Exception as e:
+            # Chụp ngay hiện trường nếu tìm không ra tên User
+            error_path = os.path.join(
+                self.error_dir, f"error_get_profile_{self.account_code}.png"
+            )
+            await self.page.screenshot(path=error_path)
+            print(
+                f"⚠ Báo động: Không tìm thấy link Profile. Đã chụp ảnh lưu tại {error_path}"
+            )
+            return ""
+
     async def _get_recent_post_urls(self) -> set:
         username = await self.get_profile_name()
         if not username:
+            print("⚠ Bỏ qua việc lấy link cũ vì không lấy được Username.")
             return set()
+
         await self.page.goto(f"{THREADS_URL}/{username}", wait_until="networkidle")
         await self.page.wait_for_timeout(3000)
 
@@ -336,6 +355,7 @@ class ThreadsBot:
     async def _wait_for_new_post(self, old_urls: set) -> str:
         username = await self.get_profile_name()
         if not username:
+            print("⚠ Bỏ qua thao tác F5 vì không lấy được Username.")
             return ""
 
         for attempt in range(6):
@@ -409,7 +429,7 @@ class ThreadsBot:
                 "svg[aria-label='Trả lời'], svg[aria-label='Reply']"
             ).first
             await reply_btn.wait_for(state="visible", timeout=10000)
-            await reply_btn.click(force=True)  # Ép click nút trả lời
+            await reply_btn.click(force=True)
             await self.page.wait_for_timeout(2000)
 
             editor = self.page.locator("div[contenteditable='true']").last
@@ -429,13 +449,6 @@ class ThreadsBot:
                 )
             )
             print(f"⚠ Không thể comment phụ. Lỗi: {e}")
-
-    async def get_profile_name(self) -> str:
-        try:
-            el = await self.page.wait_for_selector("a[href^='/@']", timeout=5000)
-            return await el.get_attribute("href")
-        except:
-            return ""
 
     async def _open_composer(self):
         try:
@@ -490,7 +503,6 @@ class ThreadsBot:
 
     async def _submit_post(self):
         try:
-            # Lấy ô soạn thảo cuối cùng
             editor = self.page.locator("div[contenteditable='true']").last
             await editor.click(force=True, timeout=2000)
             await self.page.wait_for_timeout(500)
@@ -577,7 +589,7 @@ async def run():
             account_code=acc_code,
             email=acc_info["email"],
             password=acc_info["password"],
-            headless=True,  # Nhớ để True khi up lên Github
+            headless=True,  # ĐÃ SET SẴN TRUE ĐỂ BẠN UP LÊN GITHUB
         )
 
         image_path = None
