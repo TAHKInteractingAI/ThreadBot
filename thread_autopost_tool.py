@@ -316,30 +316,47 @@ class ThreadsBot:
             )
             raise Exception(f"❌ Login tự động thất bại. Lỗi: {e}")
 
-    # 👇 ĐÃ SỬA: Tăng thời gian chờ và BẮT BUỘC CHỤP ẢNH nếu lỗi 👇
+    # 👇 ĐÃ VÁ LỖI TÌM LINK TRANG CÁ NHÂN 👇
     async def get_profile_name(self) -> str:
         try:
-            # Tăng timeout lên 15 giây cho Cloud
-            el = await self.page.wait_for_selector("a[href^='/@']", timeout=15000)
-            return await el.get_attribute("href")
+            # Chỉ tìm chính xác thẻ <a> chứa icon "Trang cá nhân" (Profile) ở menu trái
+            profile_link = (
+                self.page.locator("a")
+                .filter(
+                    has=self.page.locator(
+                        "svg[aria-label='Trang cá nhân'], svg[aria-label='Profile']"
+                    )
+                )
+                .first
+            )
+
+            await profile_link.wait_for(state="attached", timeout=15000)
+            href = await profile_link.get_attribute("href")
+            if href:
+                return href
+            return ""
         except Exception as e:
-            # Chụp ngay hiện trường nếu tìm không ra tên User
             error_path = os.path.join(
                 self.error_dir, f"error_get_profile_{self.account_code}.png"
             )
             await self.page.screenshot(path=error_path)
             print(
-                f"⚠ Báo động: Không tìm thấy link Profile. Đã chụp ảnh lưu tại {error_path}"
+                f"⚠ Báo động: Không tìm thấy nút Trang cá nhân trên giao diện. Đã chụp ảnh lưu tại {error_path}"
             )
             return ""
 
     async def _get_recent_post_urls(self) -> set:
-        username = await self.get_profile_name()
-        if not username:
-            print("⚠ Bỏ qua việc lấy link cũ vì không lấy được Username.")
+        profile_path = await self.get_profile_name()
+        if not profile_path:
+            print("⚠ Bỏ qua việc lấy link cũ vì không lấy được link Trang cá nhân.")
             return set()
 
-        await self.page.goto(f"{THREADS_URL}/{username}", wait_until="networkidle")
+        full_profile_url = (
+            f"{THREADS_URL}{profile_path}"
+            if profile_path.startswith("/")
+            else profile_path
+        )
+        await self.page.goto(full_profile_url, wait_until="networkidle")
         await self.page.wait_for_timeout(3000)
 
         urls = set()
@@ -353,14 +370,20 @@ class ThreadsBot:
         return urls
 
     async def _wait_for_new_post(self, old_urls: set) -> str:
-        username = await self.get_profile_name()
-        if not username:
-            print("⚠ Bỏ qua thao tác F5 vì không lấy được Username.")
+        profile_path = await self.get_profile_name()
+        if not profile_path:
+            print("⚠ Bỏ qua thao tác F5 vì không lấy được link Trang cá nhân.")
             return ""
+
+        full_profile_url = (
+            f"{THREADS_URL}{profile_path}"
+            if profile_path.startswith("/")
+            else profile_path
+        )
 
         for attempt in range(6):
             print(f"   ⏳ F5 tải lại trang cá nhân (Lần {attempt + 1}/6)...")
-            await self.page.goto(f"{THREADS_URL}/{username}", wait_until="networkidle")
+            await self.page.goto(full_profile_url, wait_until="networkidle")
             await self.page.wait_for_timeout(5000)
 
             link_locators = self.page.locator("a[href*='/post/']")
